@@ -32,14 +32,28 @@ export interface PermissionDescriptor {
 }
 
 export interface Member {
+  /** Membership id — unique to this person *on this holiday*. */
   id: string;
+  /**
+   * The account this membership belongs to, or null while an invitation is
+   * still waiting for that person to sign in for the first time.
+   *
+   * Ownership and every permission check key on this, never on `id` or
+   * `email`, both of which can be re-pointed at a different person.
+   */
+  userId: string | null;
   name: string;
   email: string;
+  image?: string | null;
   role: MemberRole;
   /** Explicit grants layered on top of the role defaults. */
   permissions: Permission[];
   joinedAt: string;
   avatarColor: string;
+  /** True until the invited person has signed in and claimed the invitation. */
+  pending?: boolean;
+  /** Per-member, never shared: each person chooses their own. */
+  notifications?: NotificationSettings;
 }
 
 export interface TravelLeg {
@@ -106,6 +120,8 @@ export interface HolidayDocument {
 export interface ChatMessage {
   id: string;
   memberId: string;
+  /** Author's account id, taken from the session — never from the request. */
+  userId?: string | null;
   body: string;
   sentAt: string;
 }
@@ -132,6 +148,7 @@ export interface Holiday {
   coverImage: string;
   description: string;
 
+  /** The *account id* of the owner, not a membership id. */
   ownerId: string;
   members: Member[];
 
@@ -143,7 +160,11 @@ export interface Holiday {
   createdAt: string;
   updatedAt: string;
 
+  /** The requesting member's own preferences, resolved server-side. */
   notifications: NotificationSettings;
+
+  /** How many confidential documents were withheld from this viewer. */
+  hiddenDocumentCount?: number;
 
   itinerary: ItineraryItem[];
   bookings: Booking[];
@@ -153,12 +174,12 @@ export interface Holiday {
   photos: Photo[];
 }
 
-/** Shape persisted to storage. Versioned so migrations stay possible. */
-export interface VoyagerState {
-  version: number;
-  /** The member id the session is acting as. */
-  currentMemberId: string;
-  holidays: Holiday[];
+/** The signed-in account, as the client sees it. */
+export interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
 }
 
 /** Everything a user can change through the holiday editor. */

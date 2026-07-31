@@ -56,7 +56,7 @@ export default function HolidayPage() {
 
   const holiday = store.getHoliday(id);
   const hasAccess = holiday
-    ? canAccess(holiday, store.currentMemberId)
+    ? canAccess(holiday, store.currentUserId)
     : false;
 
   const canManageDocuments = store.can(id, 'documents.manage');
@@ -107,17 +107,19 @@ export default function HolidayPage() {
     );
   }
 
-  function duplicate() {
-    const { result, id: newId } = store.duplicateHoliday(id);
-    if (!toast.fromResult(result, 'Holiday duplicated.')) return;
+  async function duplicate() {
+    const { result, id: newId } = await store.duplicateHoliday(id);
+    if (!(await toast.fromResult(result, 'Holiday duplicated.'))) return;
     if (newId) router.push(`/holidays/${newId}`);
   }
 
-  function archive() {
+  async function archive() {
     setArchiving(false);
-    if (toast.fromResult(store.archiveHoliday(id), 'Holiday moved to the archive.')) {
-      router.push('/archive');
-    }
+    const ok = await toast.fromResult(
+      store.archiveHoliday(id),
+      'Holiday moved to the archive.',
+    );
+    if (ok) router.push('/archive');
   }
 
   const archived = holiday.status === 'archived';

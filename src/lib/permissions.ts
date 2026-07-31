@@ -119,7 +119,9 @@ export function effectivePermissions(
 ): Permission[] {
   if (!member) return [];
 
-  if (member.id === holiday.ownerId) {
+  // Ownership keys on the account id. A membership id or email can be
+  // re-pointed at another person; an account id cannot.
+  if (member.userId && member.userId === holiday.ownerId) {
     return ROLE_PERMISSIONS.owner;
   }
 
@@ -137,32 +139,44 @@ export function effectivePermissions(
   );
 }
 
+/** The membership belonging to a given account, if that account is a member. */
 export function findMember(
   holiday: Holiday,
-  memberId: string,
+  userId: string | null | undefined,
 ): Member | undefined {
-  return holiday.members.find((member) => member.id === memberId);
+  if (!userId) return undefined;
+  return holiday.members.find((member) => member.userId === userId);
 }
 
-/** Central authorisation check used by every mutation in the store. */
+/**
+ * Central authorisation check. Used by the API routes to enforce, and by the
+ * client only to decide what to render — the server never trusts the client's
+ * answer.
+ */
 export function can(
   holiday: Holiday,
-  memberId: string,
+  userId: string | null | undefined,
   permission: Permission,
 ): boolean {
-  const member = findMember(holiday, memberId);
+  const member = findMember(holiday, userId);
   if (!member) return false;
   return effectivePermissions(holiday, member).includes(permission);
 }
 
-export function isOwner(holiday: Holiday, memberId: string): boolean {
-  return holiday.ownerId === memberId;
+export function isOwner(
+  holiday: Holiday,
+  userId: string | null | undefined,
+): boolean {
+  return Boolean(userId) && holiday.ownerId === userId;
 }
 
 /**
- * Whether a member is allowed to see the holiday at all. Archived holidays stay
+ * Whether an account may see the holiday at all. Archived holidays stay
  * private: only members who were on the trip keep access.
  */
-export function canAccess(holiday: Holiday, memberId: string): boolean {
-  return can(holiday, memberId, 'holiday.view');
+export function canAccess(
+  holiday: Holiday,
+  userId: string | null | undefined,
+): boolean {
+  return can(holiday, userId, 'holiday.view');
 }

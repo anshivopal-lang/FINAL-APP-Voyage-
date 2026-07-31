@@ -20,12 +20,21 @@ interface Toast {
   message: string;
 }
 
+type Result = { ok: boolean; error?: string };
+
 interface ToastApi {
   success: (message: string) => void;
   error: (message: string) => void;
   info: (message: string) => void;
-  /** Shows the error from a store result, or a success message if it worked. */
-  fromResult: (result: { ok: boolean; error?: string }, success: string) => boolean;
+  /**
+   * Reports the outcome of a store mutation. Store calls hit the API, so this
+   * takes a promise and resolves to whether it succeeded — `await` it when the
+   * next step depends on the result.
+   */
+  fromResult: (
+    result: Result | Promise<Result>,
+    success: string,
+  ) => Promise<boolean>;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -49,12 +58,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       success: (message) => push('success', message),
       error: (message) => push('error', message),
       info: (message) => push('info', message),
-      fromResult: (result, success) => {
-        if (result.ok) {
+      fromResult: async (result, success) => {
+        const settled = await result;
+        if (settled.ok) {
           push('success', success);
           return true;
         }
-        push('error', result.error ?? 'Something went wrong.');
+        push('error', settled.error ?? 'Something went wrong.');
         return false;
       },
     }),

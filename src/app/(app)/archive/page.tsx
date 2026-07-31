@@ -53,10 +53,10 @@ export default function ArchivePage() {
         .filter(
           (holiday) =>
             holiday.status === 'archived' &&
-            canAccess(holiday, store.currentMemberId),
+            canAccess(holiday, store.currentUserId),
         )
         .sort((a, b) => (b.endDate || '').localeCompare(a.endDate || '')),
-    [store.holidays, store.currentMemberId],
+    [store.holidays, store.currentUserId],
   );
 
   const countries = useMemo(

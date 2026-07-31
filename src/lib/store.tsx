@@ -6,42 +6,27 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react';
 
-import { AVATAR_COLORS, PHOTO_GRADIENTS } from './covers';
-import { COUNTRY_CURRENCY } from './currency';
-import { can, isOwner, ROLE_PERMISSIONS } from './permissions';
-import { CURRENT_MEMBER_ID, DEFAULT_NOTIFICATIONS } from './seed';
-import { clearState, loadState, saveState, STORAGE_KEY } from './storage';
+import { can as canDo, isOwner as isOwnerOf } from './permissions';
 import type {
   Booking,
-  ChatMessage,
   Expense,
   Holiday,
   HolidayDetailsDraft,
   HolidayDocument,
   ItineraryItem,
-  Member,
   MemberRole,
   NotificationSettings,
   Permission,
-  Photo,
-  VoyagerState,
+  SessionUser,
 } from './types';
-import { createId, nowIso } from './utils';
 
 export interface Result {
   ok: boolean;
   error?: string;
-}
-
-const OK: Result = { ok: true };
-
-function fail(error: string): Result {
-  return { ok: false, error };
 }
 
 /** Sections that can be wiped individually from holiday settings. */
@@ -73,621 +58,385 @@ export interface NewHolidayInput {
   coverImage?: string;
 }
 
+/* ------------------------------------------------------------------ *
+ * Transport
+ * ------------------------------------------------------------------ */
+
+interface ApiResult<T> {
+  ok: boolean;
+  error?: string;
+  data?: T;
+}
+
+/**
+ * Every call is same-origin and carries the session cookie automatically.
+ * No token is ever held in JavaScript, so nothing identity-related is
+ * reachable from the client.
+ */
+async function api<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<ApiResult<T>> {
+  try {
+    const response = await fetch(path, {
+      ...init,
+      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+      credentials: 'same-origin',
+    });
+
+    if (response.status === 401) {
+      // The session expired underneath us — bounce to a fresh sign-in.
+      window.location.href = '/signin';
+      return { ok: false, error: 'Your session expired.' };
+    }
+
+    const body = response.status === 204 ? null : await response.json();
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: body?.error?.message ?? 'Something went wrong.',
+      };
+    }
+
+    return { ok: true, data: body as T };
+  } catch {
+    return { ok: false, error: 'Could not reach the server.' };
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Store
+ * ------------------------------------------------------------------ */
+
 interface StoreValue {
-  /** False until localStorage has been read on the client. */
   ready: boolean;
   holidays: Holiday[];
-  currentMemberId: string;
-  currentMemberName: string;
+  currentUserId: string;
+  currentUserName: string;
+  currentUser: SessionUser;
 
+  refresh: () => Promise<void>;
   getHoliday: (id: string) => Holiday | undefined;
   can: (holidayId: string, permission: Permission) => boolean;
   isOwner: (holidayId: string) => boolean;
 
-  setCurrentMember: (memberId: string) => void;
-
-  createHoliday: (input: NewHolidayInput) => { result: Result; id?: string };
-  duplicateHoliday: (id: string) => { result: Result; id?: string };
-  updateHolidayDetails: (id: string, draft: HolidayDetailsDraft) => Result;
-  archiveHoliday: (id: string) => Result;
-  restoreHoliday: (id: string) => Result;
-  deleteHoliday: (id: string) => Result;
-  setRestoreEnabled: (id: string, enabled: boolean) => Result;
+  createHoliday: (
+    input: NewHolidayInput,
+  ) => Promise<{ result: Result; id?: string }>;
+  duplicateHoliday: (id: string) => Promise<{ result: Result; id?: string }>;
+  updateHolidayDetails: (
+    id: string,
+    draft: HolidayDetailsDraft,
+  ) => Promise<Result>;
+  archiveHoliday: (id: string) => Promise<Result>;
+  restoreHoliday: (id: string) => Promise<Result>;
+  deleteHoliday: (id: string, confirmName: string) => Promise<Result>;
+  setRestoreEnabled: (id: string, enabled: boolean) => Promise<Result>;
 
   addMember: (
     id: string,
     input: { name: string; email: string; role: MemberRole },
-  ) => Result;
-  updateMemberRole: (id: string, memberId: string, role: MemberRole) => Result;
+  ) => Promise<Result>;
+  updateMemberRole: (
+    id: string,
+    memberId: string,
+    role: MemberRole,
+  ) => Promise<Result>;
   toggleMemberPermission: (
     id: string,
     memberId: string,
     permission: Permission,
-  ) => Result;
-  removeMember: (id: string, memberId: string) => Result;
-  transferOwnership: (id: string, memberId: string) => Result;
+  ) => Promise<Result>;
+  removeMember: (id: string, memberId: string) => Promise<Result>;
+  transferOwnership: (id: string, memberId: string) => Promise<Result>;
 
   updateNotifications: (
     id: string,
     patch: Partial<NotificationSettings>,
-  ) => Result;
+  ) => Promise<Result>;
   updateCurrencies: (
     id: string,
     primary: string,
     secondary: string[],
-  ) => Result;
+  ) => Promise<Result>;
 
-  addItineraryItem: (id: string, item: Omit<ItineraryItem, 'id'>) => Result;
-  removeItineraryItem: (id: string, itemId: string) => Result;
-  addBooking: (id: string, booking: Omit<Booking, 'id'>) => Result;
-  removeBooking: (id: string, bookingId: string) => Result;
-  addExpense: (id: string, expense: Omit<Expense, 'id'>) => Result;
-  removeExpense: (id: string, expenseId: string) => Result;
+  addItineraryItem: (
+    id: string,
+    item: Omit<ItineraryItem, 'id'>,
+  ) => Promise<Result>;
+  removeItineraryItem: (id: string, itemId: string) => Promise<Result>;
+  addBooking: (id: string, booking: Omit<Booking, 'id'>) => Promise<Result>;
+  removeBooking: (id: string, bookingId: string) => Promise<Result>;
+  addExpense: (id: string, expense: Omit<Expense, 'id'>) => Promise<Result>;
+  removeExpense: (id: string, expenseId: string) => Promise<Result>;
   addDocument: (
     id: string,
     doc: Omit<HolidayDocument, 'id' | 'addedAt'>,
-  ) => Result;
-  removeDocument: (id: string, docId: string) => Result;
-  toggleDocumentConfidential: (id: string, docId: string) => Result;
-  addPhoto: (id: string, caption: string) => Result;
-  removePhoto: (id: string, photoId: string) => Result;
-  postMessage: (id: string, body: string) => Result;
+  ) => Promise<Result>;
+  removeDocument: (id: string, docId: string) => Promise<Result>;
+  toggleDocumentConfidential: (id: string, docId: string) => Promise<Result>;
+  addPhoto: (id: string, caption: string) => Promise<Result>;
+  removePhoto: (id: string, photoId: string) => Promise<Result>;
+  postMessage: (id: string, body: string) => Promise<Result>;
 
-  purgeSections: (id: string, sections: DataSection[]) => Result;
-  resetDemoData: () => void;
+  purgeSections: (id: string, sections: DataSection[]) => Promise<Result>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<VoyagerState | null>(null);
-  const stateRef = useRef<VoyagerState | null>(null);
-  /** Set while we are the tab writing, so we ignore our own storage event. */
-  const writingRef = useRef(false);
+export function StoreProvider({
+  user,
+  children,
+}: {
+  user: SessionUser;
+  children: ReactNode;
+}) {
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [ready, setReady] = useState(false);
 
-  const commit = useCallback((next: VoyagerState) => {
-    stateRef.current = next;
-    setState(next);
-    writingRef.current = true;
-    saveState(next);
-    writingRef.current = false;
+  /** Folds a holiday returned by the API back into local state. */
+  const upsert = useCallback((holiday: Holiday) => {
+    setHolidays((current) => {
+      const index = current.findIndex((item) => item.id === holiday.id);
+      if (index === -1) return [holiday, ...current];
+      const next = [...current];
+      next[index] = holiday;
+      return next;
+    });
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const response = await api<{ holidays: Holiday[] }>('/api/holidays');
+    if (response.ok && response.data) setHolidays(response.data.holidays);
+    setReady(true);
   }, []);
 
   useEffect(() => {
-    const initial = loadState();
-    stateRef.current = initial;
-    setState(initial);
-  }, []);
-
-  // Other tabs are other "sessions" of the same membership: when one of them
-  // writes, pull the change in so every authorised view stays current.
-  useEffect(() => {
-    function onStorage(event: StorageEvent) {
-      if (event.key !== STORAGE_KEY || writingRef.current) return;
-      const next = loadState();
-      stateRef.current = next;
-      setState(next);
-    }
-
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+    void refresh();
+  }, [refresh]);
 
   const value = useMemo<StoreValue>(() => {
-    const holidays = state?.holidays ?? [];
-    const currentMemberId = state?.currentMemberId ?? CURRENT_MEMBER_ID;
+    const find = (id: string) => holidays.find((holiday) => holiday.id === id);
 
-    function current(): VoyagerState {
-      return stateRef.current ?? { version: 1, currentMemberId, holidays: [] };
+    /** Sends a mutation and folds the returned holiday back into state. */
+    async function mutate(
+      path: string,
+      init: RequestInit,
+    ): Promise<Result> {
+      const response = await api<{ holiday: Holiday }>(path, init);
+      if (!response.ok) return { ok: false, error: response.error };
+      if (response.data?.holiday) upsert(response.data.holiday);
+      return { ok: true };
     }
 
-    function getHoliday(id: string): Holiday | undefined {
-      return current().holidays.find((holiday) => holiday.id === id);
-    }
-
-    /** Applies `patch` to one holiday after checking `permission`. */
-    function mutateHoliday(
-      id: string,
-      permission: Permission,
-      patch: (holiday: Holiday) => Holiday,
-    ): Result {
-      const snapshot = current();
-      const holiday = snapshot.holidays.find((item) => item.id === id);
-      if (!holiday) return fail('That holiday no longer exists.');
-
-      if (!can(holiday, snapshot.currentMemberId, permission)) {
-        return fail('You do not have permission to do that.');
-      }
-
-      commit({
-        ...snapshot,
-        holidays: snapshot.holidays.map((item) =>
-          item.id === id ? { ...patch(item), updatedAt: nowIso() } : item,
-        ),
-      });
-
-      return OK;
-    }
-
-    function nextAvatarColor(holiday: Holiday): string {
-      return AVATAR_COLORS[holiday.members.length % AVATAR_COLORS.length];
-    }
-
-    function makeCurrentMember(): Member {
-      const existing = current()
-        .holidays.flatMap((holiday) => holiday.members)
-        .find((member) => member.id === current().currentMemberId);
-
-      return (
-        existing ?? {
-          id: CURRENT_MEMBER_ID,
-          name: 'Aashish Opal',
-          email: 'aashishopal@gmail.com',
-          role: 'owner',
-          permissions: [],
-          joinedAt: nowIso(),
-          avatarColor: AVATAR_COLORS[0],
-        }
-      );
-    }
-
-    const currentMemberName = makeCurrentMember().name;
+    const post = (path: string, body: unknown) => ({
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
 
     return {
-      ready: state !== null,
+      ready,
       holidays,
-      currentMemberId,
-      currentMemberName,
+      currentUserId: user.id,
+      currentUserName: user.name,
+      currentUser: user,
 
-      getHoliday,
+      refresh,
+      getHoliday: find,
 
+      // Client-side permission checks decide what to *render*. The server
+      // re-checks everything and is the only thing that actually protects data.
       can(holidayId, permission) {
-        const holiday = getHoliday(holidayId);
-        if (!holiday) return false;
-        return can(holiday, current().currentMemberId, permission);
+        const holiday = find(holidayId);
+        return holiday ? canDo(holiday, user.id, permission) : false;
       },
 
       isOwner(holidayId) {
-        const holiday = getHoliday(holidayId);
-        if (!holiday) return false;
-        return isOwner(holiday, current().currentMemberId);
+        const holiday = find(holidayId);
+        return holiday ? isOwnerOf(holiday, user.id) : false;
       },
 
-      setCurrentMember(memberId) {
-        commit({ ...current(), currentMemberId: memberId });
+      async createHoliday(input) {
+        const response = await api<{ holiday: Holiday }>(
+          '/api/holidays',
+          post('/api/holidays', {
+            ...input,
+            primaryCurrency: input.primaryCurrency ?? 'GBP',
+            description: input.description ?? '',
+            coverImage: input.coverImage ?? 'aurora',
+          }),
+        );
+
+        if (!response.ok) return { result: { ok: false, error: response.error } };
+        upsert(response.data!.holiday);
+        return { result: { ok: true }, id: response.data!.holiday.id };
       },
 
-      createHoliday(input) {
-        const snapshot = current();
-        const owner: Member = { ...makeCurrentMember(), role: 'owner', permissions: [] };
-        const id = createId('hol');
-        const timestamp = nowIso();
-        const primaryCurrency =
-          input.primaryCurrency || COUNTRY_CURRENCY[input.country] || 'GBP';
+      async duplicateHoliday(id) {
+        const response = await api<{ holiday: Holiday }>(
+          `/api/holidays/${id}/duplicate`,
+          { method: 'POST' },
+        );
 
-        const holiday: Holiday = {
-          id,
-          name: input.name.trim() || 'Untitled holiday',
-          country: input.country,
-          cities: input.cities.filter(Boolean),
-          startDate: input.startDate,
-          endDate: input.endDate,
-          departure: {
-            date: input.startDate,
-            time: '',
-            location: '',
-            reference: '',
-          },
-          arrival: { date: input.endDate, time: '', location: '', reference: '' },
-          primaryCurrency,
-          secondaryCurrencies: [],
-          coverImage: input.coverImage || 'aurora',
-          description: input.description ?? '',
-          ownerId: owner.id,
-          members: [owner],
-          status: 'active',
-          archivedAt: null,
-          restoreEnabled: true,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          notifications: { ...DEFAULT_NOTIFICATIONS },
-          itinerary: [],
-          bookings: [],
-          expenses: [],
-          documents: [],
-          chat: [],
-          photos: [],
-        };
-
-        commit({ ...snapshot, holidays: [holiday, ...snapshot.holidays] });
-        return { result: OK, id };
-      },
-
-      duplicateHoliday(sourceId) {
-        const snapshot = current();
-        const source = snapshot.holidays.find((item) => item.id === sourceId);
-        if (!source) return { result: fail('That holiday no longer exists.') };
-        if (!can(source, snapshot.currentMemberId, 'holiday.view')) {
-          return { result: fail('You do not have access to that holiday.') };
-        }
-
-        const id = createId('hol');
-        const timestamp = nowIso();
-        const owner: Member = { ...makeCurrentMember(), role: 'owner', permissions: [] };
-
-        // Planning details carry over; anything that happened on the original
-        // trip (spend, chat, photos, dates) deliberately does not.
-        const copy: Holiday = {
-          ...source,
-          id,
-          name: `${source.name} (copy)`,
-          startDate: '',
-          endDate: '',
-          departure: { date: '', time: '', location: source.departure.location, reference: '' },
-          arrival: { date: '', time: '', location: source.arrival.location, reference: '' },
-          ownerId: owner.id,
-          members: [
-            owner,
-            ...source.members
-              .filter((member) => member.id !== owner.id)
-              .map((member) => ({ ...member, joinedAt: timestamp })),
-          ],
-          status: 'active',
-          archivedAt: null,
-          restoreEnabled: true,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          notifications: { ...source.notifications },
-          itinerary: source.itinerary.map((item) => ({
-            ...item,
-            id: createId('itin'),
-            date: '',
-          })),
-          bookings: [],
-          expenses: [],
-          documents: source.documents
-            .filter((doc) => !doc.confidential)
-            .map((doc) => ({ ...doc, id: createId('doc'), addedAt: timestamp })),
-          chat: [],
-          photos: [],
-        };
-
-        commit({ ...snapshot, holidays: [copy, ...snapshot.holidays] });
-        return { result: OK, id };
+        if (!response.ok) return { result: { ok: false, error: response.error } };
+        upsert(response.data!.holiday);
+        return { result: { ok: true }, id: response.data!.holiday.id };
       },
 
       updateHolidayDetails(id, draft) {
-        return mutateHoliday(id, 'holiday.edit', (holiday) => ({
-          ...holiday,
-          ...draft,
-          cities: draft.cities.map((city) => city.trim()).filter(Boolean),
-          secondaryCurrencies: draft.secondaryCurrencies.filter(
-            (code) => code !== draft.primaryCurrency,
-          ),
-        }));
+        return mutate(`/api/holidays/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(draft),
+        });
       },
 
       archiveHoliday(id) {
-        return mutateHoliday(id, 'holiday.archive', (holiday) => ({
-          ...holiday,
-          status: 'archived',
-          archivedAt: nowIso(),
-        }));
+        return mutate(
+          `/api/holidays/${id}/lifecycle`,
+          post('', { action: 'archive' }),
+        );
       },
 
       restoreHoliday(id) {
-        const holiday = getHoliday(id);
-        if (holiday && !holiday.restoreEnabled) {
-          return fail('Restore is disabled for this holiday.');
-        }
-        return mutateHoliday(id, 'holiday.archive', (item) => ({
-          ...item,
-          status: 'active',
-          archivedAt: null,
-        }));
+        return mutate(
+          `/api/holidays/${id}/lifecycle`,
+          post('', { action: 'restore' }),
+        );
       },
 
       setRestoreEnabled(id, enabled) {
-        return mutateHoliday(id, 'holiday.archive', (holiday) => ({
-          ...holiday,
-          restoreEnabled: enabled,
-        }));
-      },
-
-      deleteHoliday(id) {
-        const snapshot = current();
-        const holiday = snapshot.holidays.find((item) => item.id === id);
-        if (!holiday) return fail('That holiday no longer exists.');
-
-        // Deletion is owner-only and is never delegated, even to an organiser
-        // holding every other permission.
-        if (!isOwner(holiday, snapshot.currentMemberId)) {
-          return fail('Only the holiday owner can delete a holiday.');
-        }
-
-        commit({
-          ...snapshot,
-          holidays: snapshot.holidays.filter((item) => item.id !== id),
-        });
-
-        return OK;
-      },
-
-      addMember(id, input) {
-        const email = input.email.trim().toLowerCase();
-        if (!email) return fail('An email address is required.');
-
-        const holiday = getHoliday(id);
-        if (holiday?.members.some((member) => member.email.toLowerCase() === email)) {
-          return fail('That person is already on this holiday.');
-        }
-
-        return mutateHoliday(id, 'members.manage', (item) => ({
-          ...item,
-          members: [
-            ...item.members,
-            {
-              id: createId('mem'),
-              name: input.name.trim() || email.split('@')[0],
-              email,
-              role: input.role,
-              permissions: [],
-              joinedAt: nowIso(),
-              avatarColor: nextAvatarColor(item),
-            },
-          ],
-        }));
-      },
-
-      updateMemberRole(id, memberId, role) {
-        const holiday = getHoliday(id);
-        if (holiday && holiday.ownerId === memberId) {
-          return fail('The owner’s role cannot be changed. Transfer ownership instead.');
-        }
-
-        return mutateHoliday(id, 'members.manage', (item) => ({
-          ...item,
-          members: item.members.map((member) =>
-            member.id === memberId
-              ? {
-                  ...member,
-                  role,
-                  // Explicit grants already covered by the new role are folded
-                  // back in so the permission grid reads cleanly.
-                  permissions: member.permissions.filter(
-                    (permission) => !ROLE_PERMISSIONS[role].includes(permission),
-                  ),
-                }
-              : member,
-          ),
-        }));
-      },
-
-      toggleMemberPermission(id, memberId, permission) {
-        const holiday = getHoliday(id);
-        if (holiday && holiday.ownerId === memberId) {
-          return fail('The owner always holds every permission.');
-        }
-
-        return mutateHoliday(id, 'members.manage', (item) => ({
-          ...item,
-          members: item.members.map((member) => {
-            if (member.id !== memberId) return member;
-
-            const fromRole = ROLE_PERMISSIONS[member.role].includes(permission);
-            const granted = member.permissions.includes(permission);
-
-            if (fromRole) {
-              // Role already grants it; removing means downgrading the role.
-              return member;
-            }
-
-            return {
-              ...member,
-              permissions: granted
-                ? member.permissions.filter((key) => key !== permission)
-                : [...member.permissions, permission],
-            };
-          }),
-        }));
-      },
-
-      removeMember(id, memberId) {
-        const holiday = getHoliday(id);
-        if (holiday && holiday.ownerId === memberId) {
-          return fail('The owner cannot be removed from their own holiday.');
-        }
-
-        return mutateHoliday(id, 'members.manage', (item) => ({
-          ...item,
-          members: item.members.filter((member) => member.id !== memberId),
-        }));
-      },
-
-      transferOwnership(id, memberId) {
-        const snapshot = current();
-        const holiday = snapshot.holidays.find((item) => item.id === id);
-        if (!holiday) return fail('That holiday no longer exists.');
-        if (!isOwner(holiday, snapshot.currentMemberId)) {
-          return fail('Only the current owner can transfer ownership.');
-        }
-        if (!holiday.members.some((member) => member.id === memberId)) {
-          return fail('That person is not a member of this holiday.');
-        }
-
-        commit({
-          ...snapshot,
-          holidays: snapshot.holidays.map((item) =>
-            item.id !== id
-              ? item
-              : {
-                  ...item,
-                  ownerId: memberId,
-                  updatedAt: nowIso(),
-                  members: item.members.map((member) => {
-                    if (member.id === memberId) return { ...member, role: 'owner' };
-                    if (member.id === item.ownerId) {
-                      return { ...member, role: 'organiser' };
-                    }
-                    return member;
-                  }),
-                },
-          ),
-        });
-
-        return OK;
-      },
-
-      updateNotifications(id, patch) {
-        return mutateHoliday(id, 'holiday.view', (holiday) => ({
-          ...holiday,
-          notifications: { ...holiday.notifications, ...patch },
-        }));
-      },
-
-      updateCurrencies(id, primary, secondary) {
-        return mutateHoliday(id, 'holiday.edit', (holiday) => ({
-          ...holiday,
-          primaryCurrency: primary,
-          secondaryCurrencies: secondary.filter((code) => code !== primary),
-        }));
-      },
-
-      addItineraryItem(id, item) {
-        return mutateHoliday(id, 'itinerary.manage', (holiday) => ({
-          ...holiday,
-          itinerary: [...holiday.itinerary, { ...item, id: createId('itin') }].sort(
-            (a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`),
-          ),
-        }));
-      },
-
-      removeItineraryItem(id, itemId) {
-        return mutateHoliday(id, 'itinerary.manage', (holiday) => ({
-          ...holiday,
-          itinerary: holiday.itinerary.filter((item) => item.id !== itemId),
-        }));
-      },
-
-      addBooking(id, booking) {
-        return mutateHoliday(id, 'bookings.manage', (holiday) => ({
-          ...holiday,
-          bookings: [...holiday.bookings, { ...booking, id: createId('bk') }],
-        }));
-      },
-
-      removeBooking(id, bookingId) {
-        return mutateHoliday(id, 'bookings.manage', (holiday) => ({
-          ...holiday,
-          bookings: holiday.bookings.filter((booking) => booking.id !== bookingId),
-        }));
-      },
-
-      addExpense(id, expense) {
-        return mutateHoliday(id, 'expenses.manage', (holiday) => ({
-          ...holiday,
-          expenses: [{ ...expense, id: createId('exp') }, ...holiday.expenses],
-        }));
-      },
-
-      removeExpense(id, expenseId) {
-        return mutateHoliday(id, 'expenses.manage', (holiday) => ({
-          ...holiday,
-          expenses: holiday.expenses.filter((expense) => expense.id !== expenseId),
-        }));
-      },
-
-      addDocument(id, doc) {
-        return mutateHoliday(id, 'documents.manage', (holiday) => ({
-          ...holiday,
-          documents: [
-            { ...doc, id: createId('doc'), addedAt: nowIso() },
-            ...holiday.documents,
-          ],
-        }));
-      },
-
-      removeDocument(id, docId) {
-        return mutateHoliday(id, 'documents.manage', (holiday) => ({
-          ...holiday,
-          documents: holiday.documents.filter((doc) => doc.id !== docId),
-        }));
-      },
-
-      toggleDocumentConfidential(id, docId) {
-        return mutateHoliday(id, 'documents.manage', (holiday) => ({
-          ...holiday,
-          documents: holiday.documents.map((doc) =>
-            doc.id === docId ? { ...doc, confidential: !doc.confidential } : doc,
-          ),
-        }));
-      },
-
-      addPhoto(id, caption) {
-        return mutateHoliday(id, 'photos.manage', (holiday) => {
-          const photo: Photo = {
-            id: createId('pho'),
-            caption: caption.trim() || 'Untitled',
-            takenAt: nowIso(),
-            gradient:
-              PHOTO_GRADIENTS[holiday.photos.length % PHOTO_GRADIENTS.length],
-          };
-          return { ...holiday, photos: [photo, ...holiday.photos] };
-        });
-      },
-
-      removePhoto(id, photoId) {
-        return mutateHoliday(id, 'photos.manage', (holiday) => ({
-          ...holiday,
-          photos: holiday.photos.filter((photo) => photo.id !== photoId),
-        }));
-      },
-
-      postMessage(id, body) {
-        const text = body.trim();
-        if (!text) return fail('Message is empty.');
-
-        return mutateHoliday(id, 'chat.post', (holiday) => {
-          const message: ChatMessage = {
-            id: createId('msg'),
-            memberId: current().currentMemberId,
-            body: text,
-            sentAt: nowIso(),
-          };
-          return { ...holiday, chat: [...holiday.chat, message] };
-        });
+        return mutate(
+          `/api/holidays/${id}/lifecycle`,
+          post('', { action: 'set-restore-enabled', restoreEnabled: enabled }),
+        );
       },
 
       purgeSections(id, sections) {
-        const snapshot = current();
-        const holiday = snapshot.holidays.find((item) => item.id === id);
-        if (!holiday) return fail('That holiday no longer exists.');
-        if (!isOwner(holiday, snapshot.currentMemberId)) {
-          return fail('Only the holiday owner can erase holiday data.');
-        }
+        return mutate(
+          `/api/holidays/${id}/lifecycle`,
+          post('', { action: 'purge', sections }),
+        );
+      },
 
-        commit({
-          ...snapshot,
-          holidays: snapshot.holidays.map((item) => {
-            if (item.id !== id) return item;
-            const next = { ...item, updatedAt: nowIso() };
-            for (const section of sections) {
-              next[section] = [] as never;
-            }
-            return next;
-          }),
+      async deleteHoliday(id, confirmName) {
+        const response = await api(`/api/holidays/${id}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ confirmName }),
         });
 
-        return OK;
+        if (!response.ok) return { ok: false, error: response.error };
+        setHolidays((current) => current.filter((item) => item.id !== id));
+        return { ok: true };
       },
 
-      resetDemoData() {
-        clearState();
-        const fresh = loadState();
-        commit(fresh);
+      addMember(id, input) {
+        return mutate(`/api/holidays/${id}/members`, post('', input));
       },
+
+      updateMemberRole(id, memberId, role) {
+        return mutate(`/api/holidays/${id}/members/${memberId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ role }),
+        });
+      },
+
+      toggleMemberPermission(id, memberId, permission) {
+        const holiday = find(id);
+        const member = holiday?.members.find((item) => item.id === memberId);
+        if (!member) return Promise.resolve({ ok: false, error: 'Unknown member.' });
+
+        const held = member.permissions.includes(permission);
+        const permissions = held
+          ? member.permissions.filter((item) => item !== permission)
+          : [...member.permissions, permission];
+
+        return mutate(`/api/holidays/${id}/members/${memberId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ permissions }),
+        });
+      },
+
+      removeMember(id, memberId) {
+        return mutate(`/api/holidays/${id}/members/${memberId}`, {
+          method: 'DELETE',
+        });
+      },
+
+      transferOwnership(id, memberId) {
+        return mutate(
+          `/api/holidays/${id}/settings`,
+          post('', { action: 'transfer-ownership', memberId }),
+        );
+      },
+
+      updateNotifications(id, patch) {
+        return mutate(
+          `/api/holidays/${id}/settings`,
+          post('', { action: 'notifications', ...patch }),
+        );
+      },
+
+      updateCurrencies(id, primary, secondary) {
+        return mutate(
+          `/api/holidays/${id}/settings`,
+          post('', {
+            action: 'currencies',
+            primaryCurrency: primary,
+            secondaryCurrencies: secondary,
+          }),
+        );
+      },
+
+      addItineraryItem: (id, item) =>
+        mutate(`/api/holidays/${id}/items/itinerary`, post('', item)),
+      removeItineraryItem: (id, itemId) =>
+        mutate(`/api/holidays/${id}/items/itinerary/${itemId}`, {
+          method: 'DELETE',
+        }),
+
+      addBooking: (id, booking) =>
+        mutate(`/api/holidays/${id}/items/bookings`, post('', booking)),
+      removeBooking: (id, bookingId) =>
+        mutate(`/api/holidays/${id}/items/bookings/${bookingId}`, {
+          method: 'DELETE',
+        }),
+
+      addExpense: (id, expense) =>
+        mutate(`/api/holidays/${id}/items/expenses`, post('', expense)),
+      removeExpense: (id, expenseId) =>
+        mutate(`/api/holidays/${id}/items/expenses/${expenseId}`, {
+          method: 'DELETE',
+        }),
+
+      addDocument: (id, doc) =>
+        mutate(`/api/holidays/${id}/items/documents`, post('', doc)),
+      removeDocument: (id, docId) =>
+        mutate(`/api/holidays/${id}/items/documents/${docId}`, {
+          method: 'DELETE',
+        }),
+
+      toggleDocumentConfidential(id, docId) {
+        const doc = find(id)?.documents.find((item) => item.id === docId);
+        if (!doc) return Promise.resolve({ ok: false, error: 'Unknown document.' });
+
+        return mutate(`/api/holidays/${id}/items/documents/${docId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ confidential: !doc.confidential }),
+        });
+      },
+
+      addPhoto: (id, caption) =>
+        mutate(`/api/holidays/${id}/items/photos`, post('', { caption })),
+      removePhoto: (id, photoId) =>
+        mutate(`/api/holidays/${id}/items/photos/${photoId}`, {
+          method: 'DELETE',
+        }),
+
+      postMessage: (id, body) =>
+        mutate(`/api/holidays/${id}/items/chat`, post('', { body })),
     };
-  }, [state, commit]);
+  }, [holidays, ready, refresh, upsert, user]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
@@ -698,18 +447,4 @@ export function useStore(): StoreValue {
     throw new Error('useStore must be used inside <StoreProvider>.');
   }
   return context;
-}
-
-/** Convenience hook for a single holiday plus the caller's rights on it. */
-export function useHoliday(id: string) {
-  const store = useStore();
-  const holiday = store.getHoliday(id);
-
-  return {
-    ...store,
-    holiday,
-    canEdit: store.can(id, 'holiday.edit'),
-    canManageMembers: store.can(id, 'members.manage'),
-    owner: holiday ? store.isOwner(id) : false,
-  };
 }

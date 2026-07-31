@@ -13,12 +13,34 @@ export function Avatar({
   color,
   size = 32,
   ring,
+  image,
 }: {
   name: string;
   color: string;
   size?: number;
   ring?: boolean;
+  /** Google profile picture, when the member has signed in. */
+  image?: string | null;
 }) {
+  if (image) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={image}
+        alt=""
+        title={name}
+        width={size}
+        height={size}
+        referrerPolicy="no-referrer"
+        style={{ width: size, height: size }}
+        className={cx(
+          'inline-block shrink-0 rounded-full object-cover',
+          ring && 'ring-2 ring-ink-950',
+        )}
+      />
+    );
+  }
+
   return (
     <span
       title={name}

@@ -57,12 +57,17 @@ export function ItineraryPanel({ holiday, readOnly }: PanelProps) {
     return [...groups.entries()];
   }, [holiday.itinerary]);
 
-  function add() {
+  async function add() {
     if (!draft.title.trim()) {
       toast.error('Give the plan a title.');
       return;
     }
-    if (toast.fromResult(addItineraryItem(holiday.id, draft), 'Added to the itinerary.')) {
+    if (
+      await toast.fromResult(
+        addItineraryItem(holiday.id, draft),
+        'Added to the itinerary.',
+      )
+    ) {
       setDraft({ ...draft, title: '', time: '', notes: '' });
     }
   }
@@ -249,12 +254,12 @@ export function BookingsPanel({ holiday, readOnly }: PanelProps) {
     0,
   );
 
-  function add() {
+  async function add() {
     if (!draft.title.trim()) {
       toast.error('Give the booking a title.');
       return;
     }
-    if (toast.fromResult(addBooking(holiday.id, draft), 'Booking saved.')) {
+    if (await toast.fromResult(addBooking(holiday.id, draft), 'Booking saved.')) {
       setDraft({ ...draft, title: '', reference: '', amount: 0 });
     }
   }
@@ -443,7 +448,7 @@ const EXPENSE_CATEGORIES: Array<{ value: Expense['category']; label: string }> =
 ];
 
 export function ExpensesPanel({ holiday, readOnly }: PanelProps) {
-  const { addExpense, removeExpense, currentMemberId } = useStore();
+  const { addExpense, removeExpense, currentUserId } = useStore();
   const toast = useToast();
   const [draft, setDraft] = useState<Omit<Expense, 'id'>>({
     title: '',
@@ -451,7 +456,8 @@ export function ExpensesPanel({ holiday, readOnly }: PanelProps) {
     amount: 0,
     currency: holiday.primaryCurrency,
     date: new Date().toISOString().slice(0, 10),
-    paidByMemberId: currentMemberId,
+    paidByMemberId:
+      holiday.members.find((member) => member.userId === currentUserId)?.id ?? "",
   });
 
   const total = holiday.expenses.reduce(
@@ -472,7 +478,7 @@ export function ExpensesPanel({ holiday, readOnly }: PanelProps) {
     return map;
   }, [holiday.expenses, holiday.primaryCurrency]);
 
-  function add() {
+  async function add() {
     if (!draft.title.trim()) {
       toast.error('Give the expense a title.');
       return;
@@ -481,7 +487,7 @@ export function ExpensesPanel({ holiday, readOnly }: PanelProps) {
       toast.error('Enter an amount greater than zero.');
       return;
     }
-    if (toast.fromResult(addExpense(holiday.id, draft), 'Expense logged.')) {
+    if (await toast.fromResult(addExpense(holiday.id, draft), 'Expense logged.')) {
       setDraft({ ...draft, title: '', amount: 0 });
     }
   }
@@ -713,12 +719,12 @@ export function DocumentsPanel({ holiday, readOnly }: PanelProps) {
     confidential: false,
   });
 
-  function add() {
+  async function add() {
     if (!draft.name.trim()) {
       toast.error('Give the document a name.');
       return;
     }
-    if (toast.fromResult(addDocument(holiday.id, draft), 'Document added.')) {
+    if (await toast.fromResult(addDocument(holiday.id, draft), 'Document added.')) {
       setDraft({ ...draft, name: '' });
     }
   }
@@ -936,8 +942,13 @@ export function PhotosPanel({ holiday, readOnly }: PanelProps) {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => {
-              if (toast.fromResult(addPhoto(holiday.id, caption), 'Photo added.')) {
+            onClick={async () => {
+              if (
+                await toast.fromResult(
+                  addPhoto(holiday.id, caption),
+                  'Photo added.',
+                )
+              ) {
                 setCaption('');
               }
             }}
@@ -954,12 +965,12 @@ export function PhotosPanel({ holiday, readOnly }: PanelProps) {
 /* -- Chat --------------------------------------------------------------- */
 
 export function ChatPanel({ holiday, readOnly }: PanelProps) {
-  const { postMessage, currentMemberId } = useStore();
+  const { postMessage, currentUserId } = useStore();
   const toast = useToast();
   const [body, setBody] = useState('');
 
-  function send() {
-    if (toast.fromResult(postMessage(holiday.id, body), 'Message sent.')) {
+  async function send() {
+    if (await toast.fromResult(postMessage(holiday.id, body), 'Message sent.')) {
       setBody('');
     }
   }
@@ -985,7 +996,7 @@ export function ChatPanel({ holiday, readOnly }: PanelProps) {
               const author = holiday.members.find(
                 (member) => member.id === message.memberId,
               );
-              const mine = message.memberId === currentMemberId;
+              const mine = message.userId === currentUserId;
 
               return (
                 <div

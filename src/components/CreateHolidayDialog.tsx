@@ -54,7 +54,7 @@ export function CreateHolidayDialog({
     }));
   }
 
-  function submit() {
+  async function submit() {
     if (!form.name.trim()) {
       setError('Give the holiday a name.');
       return;
@@ -64,8 +64,8 @@ export function CreateHolidayDialog({
       return;
     }
 
-    const { result, id } = createHoliday(form);
-    if (!toast.fromResult(result, `${form.name.trim()} created.`)) return;
+    const { result, id } = await createHoliday(form);
+    if (!(await toast.fromResult(result, `${form.name.trim()} created.`))) return;
 
     onClose();
     if (id) router.push(`/holidays/${id}`);

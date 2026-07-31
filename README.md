@@ -1,51 +1,43 @@
 # Voyager — Holiday Management System
 
-A private, premium-feeling platform for planning, sharing and archiving holidays.
-Built with Next.js (App Router), React 19, TypeScript and Tailwind CSS v4.
+A private, multi-user platform for planning, sharing and archiving holidays.
+Next.js (App Router), TypeScript, Tailwind CSS v4, Auth.js v5 with Google
+Sign-In, and Postgres.
 
-## What it does
+## Security model
 
-### Create holidays
+Identity comes from one place only: the signed session cookie. There is no way
+to select, spoof or switch accounts from the UI.
 
-- Unlimited holidays, created straight from the dashboard.
-- Upcoming, in-progress and past trips are grouped automatically.
-- **Duplicate** any holiday to reuse its planning details. The copy keeps the
-  destination, cities, members, cover, currencies and the shape of the itinerary,
-  and deliberately drops dates, bookings, expenses, chat, photos and confidential
-  documents.
+- **Google OAuth via Auth.js v5.** Sessions are stateless JWTs in an httpOnly,
+  SameSite=Lax cookie. No token is ever readable from client JavaScript.
+- **Ownership keys on the account id**, never on an email or a membership id —
+  both of which can be re-pointed at a different person.
+- **Every API route re-checks the session server-side.** The client's own
+  permission checks decide only what to *render*; they are never trusted.
+- **Reads are scoped by a membership join**, so "list holidays" cannot return
+  someone else's row even if the filter were forgotten downstream.
+- **Unauthorised access returns 404, not 403**, so holiday ids cannot be probed
+  for existence.
+- **Confidential documents are filtered out server-side** — a member without
+  `documents.manage` never receives them in the payload at all.
+- **Chat authorship comes from the session**, never the request body.
+- **Owner-only permissions** (`holiday.archive`, `holiday.delete`) are stripped
+  from any member update rather than rejected, so a client posting the whole
+  permission grid cannot escalate by accident.
 
-### Edit holidays
+Run the proof:
 
-Everything on a holiday is editable from its settings page: name, country, one or
-many cities, start and end dates, departure and arrival date/time/location/reference,
-primary currency, secondary currencies, cover image, description, and members and
-their permissions. Saving writes through the shared store, so every open view for
-every authorised member updates immediately.
+```bash
+node --env-file=.env.local tests/data-isolation.mjs
+```
 
-### Delete and archive
+47 checks covering: unauthenticated access, forged and wrong-secret cookies,
+cross-account reads and writes across twelve endpoints, sharing, privilege
+escalation, confidential-document leakage, authorship spoofing, and immediate
+revocation on member removal.
 
-- **Archive** moves a finished trip out of the active list while keeping every
-  itinerary item, booking, expense, document, message and photo.
-- **Restore** brings it back, and can be switched off per holiday when a trip
-  should stay permanently in the travel history.
-- **Delete** is permanent, owner-only, and requires typing the holiday's exact name
-  after being shown a precise count of what will be destroyed.
-- **Data deletion** clears individual sections (itinerary, bookings, expenses,
-  documents, chat, photos) without deleting the holiday itself.
-
-### Holiday archive
-
-Archived trips get their own page with search across trip names, cities, expenses,
-documents, photos and itinerary titles, plus country and year filters. Expanding a
-trip shows the full record: what was spent, which documents were kept, the photo
-album and who travelled. Archived holidays remain private to their members.
-
-### Holiday settings
-
-One page per holiday covering holiday details, members, permissions, notifications,
-currency, documents, archive options and data deletion.
-
-## Roles and permissions
+## Roles
 
 | Role | What it grants |
 | --- | --- |
@@ -54,43 +46,101 @@ currency, documents, archive options and data deletion.
 | Traveller | Itinerary, expenses, photos and chat. |
 | Viewer | Read-only. |
 
-Extra permissions can be granted to an individual on top of their role from the
-permission grid. `holiday.archive` and `holiday.delete` are owner-only and can never
-be delegated — every mutation in `src/lib/store.tsx` runs through `can()` in
-`src/lib/permissions.ts` before touching state.
+Extra permissions can be granted individually on top of a role. Trips are
+private to their owner until someone is invited by email — if that person has
+no account yet the membership stays pending and is claimed automatically the
+first time they sign in with Google.
 
-Use the member switcher in the header to view the app as any member and see the
-permission model applied.
+## Local setup
 
-## Running it
+1. **Postgres.** Any instance will do:
 
-```bash
-npm install
-npm run dev      # http://localhost:3000
-npm run build    # production build
-npm run start    # serve the production build
-npm run typecheck
+   ```bash
+   createdb voyager_dev
+   ```
+
+2. **Google OAuth client.** Google Cloud Console → APIs & Services →
+   Credentials → *Create OAuth client ID* → Web application.
+
+   Authorised redirect URI (must match exactly):
+
+   ```
+   http://localhost:3000/api/auth/callback/google
+   ```
+
+3. **Environment.** Copy `.env.example` to `.env.local` and fill it in.
+   Generate the secret with `openssl rand -base64 32`.
+
+4. **Run.**
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+The schema is created automatically on first request. `GET /api/health`
+reports whether the process can reach Postgres.
+
+## Deploying to Vercel
+
+1. Push to GitHub and import the repository in Vercel.
+2. Add a Postgres database — Vercel Postgres, Neon and Supabase all work.
+   Set `DATABASE_URL` to its pooled connection string.
+3. Set these environment variables for **Production, Preview and Development**:
+
+   | Variable | Notes |
+   | --- | --- |
+   | `GOOGLE_CLIENT_ID` | From the Google OAuth client |
+   | `GOOGLE_CLIENT_SECRET` | Server-only; never prefix with `NEXT_PUBLIC_` |
+   | `AUTH_SECRET` | `openssl rand -base64 32`. Changing it signs everyone out |
+   | `NEXTAUTH_SECRET` | Same value — set both so either convention works |
+   | `DATABASE_URL` | Pooled Postgres connection string |
+
+   `NEXTAUTH_URL` is **not** required on Vercel: the deployment URL is detected
+   automatically and `trustHost` is enabled. Set it only for a custom domain.
+
+4. Add your production redirect URI to the Google OAuth client:
+
+   ```
+   https://your-domain.com/api/auth/callback/google
+   ```
+
+   Preview deployments get a new URL each time, so either add them explicitly
+   or test OAuth on production only.
+
+No secret is exposed to the browser: nothing is prefixed with `NEXT_PUBLIC_`,
+and OAuth, session verification and every database query run server-side.
+
+## Architecture
+
+```
+src/
+  auth.ts                     Auth.js config — Google provider, JWT sessions
+  app/
+    (app)/                    Authenticated pages; layout redirects to /signin
+    signin/                   Public sign-in page
+    api/holidays/…            REST API; every route calls requireUser()
+    api/health/               Liveness probe
+  lib/
+    permissions.ts            Roles and grants — shared by client and server
+    store.tsx                 Client store; talks to the API, holds no identity
+    server/
+      db.ts                   Postgres pool, schema migration
+      repository.ts           Data access — every read scoped by user
+      guard.ts                requireUser, authoriseHoliday, error handling
+      validation.ts           Zod schemas for every request body
+tests/
+  data-isolation.mjs          Two-account isolation proof
 ```
 
-Deploying to Vercel needs no extra configuration — Next.js is detected
-automatically, `npm run build` is the build command and `.next` the output.
+Data lives in Postgres in three tables: `users`, `holidays` (trip document as
+JSONB) and `holiday_members` (a real table, so "which holidays may this user
+see" is an indexed join rather than a scan).
 
-## Module system
+## Note on `server/`
 
-This project uses **ES Modules**, declared by `"type": "module"` in `package.json`.
-Config files use the `.mjs` extension with `export default` (`next.config.mjs`,
-`postcss.config.mjs`) so Node and the Vercel build image resolve them unambiguously.
-Do not convert this project to CommonJS: Next.js App Router source is ESM, and mixing
-`require`/`module.exports` into it is what produces
-`ReferenceError: module is not defined in ES module scope` on Vercel.
-
-## Data
-
-State lives in the browser (`localStorage`, key `voyager.state.v1`) behind the
-repository-shaped API in `src/lib/store.tsx`, and is seeded with four example
-holidays on first run. Open the app in two tabs to see changes propagate between
-sessions. Swapping the store's persistence for a real database and API routes
-requires no changes to the components or the permission layer.
-
-Cross-currency totals use an indicative rate table for display only — not a live FX
-feed, and not suitable for settlement.
+The standalone Express API in `server/` predates this work and is **superseded**.
+It has its own email/password authentication that bypasses Google entirely, and
+its JSON-file store cannot persist on Vercel. It is not part of the Next.js
+build and is not deployed, but it should be deleted rather than left as a second
+way into the same data model.

@@ -35,9 +35,9 @@ export default function DashboardPage() {
   const visible = useMemo(
     () =>
       store.holidays.filter((holiday) =>
-        canAccess(holiday, store.currentMemberId),
+        canAccess(holiday, store.currentUserId),
       ),
-    [store.holidays, store.currentMemberId],
+    [store.holidays, store.currentUserId],
   );
 
   const active = useMemo(
@@ -75,12 +75,13 @@ export default function DashboardPage() {
   );
   const countries = new Set(visible.map((holiday) => holiday.country)).size;
 
-  function duplicate(id: string) {
-    const { result, id: newId } = store.duplicateHoliday(id);
-    if (!toast.fromResult(result, 'Holiday duplicated — dates cleared, ready to re-plan.')) {
-      return;
-    }
-    if (newId) router.push(`/holidays/${newId}`);
+  async function duplicate(id: string) {
+    const { result, id: newId } = await store.duplicateHoliday(id);
+    const ok = await toast.fromResult(
+      result,
+      'Holiday duplicated — dates cleared, ready to re-plan.',
+    );
+    if (ok && newId) router.push(`/holidays/${newId}`);
   }
 
   if (!store.ready) {
@@ -93,7 +94,7 @@ export default function DashboardPage() {
         <div>
           <p className="eyebrow">Welcome back</p>
           <h1 className="display-xl mt-3 text-ink-100">
-            {store.currentMemberName.split(' ')[0]}’s holidays
+            {store.currentUserName.split(' ')[0]}’s holidays
           </h1>
           <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-400">
             Every trip you own or have been invited to. Create as many as you

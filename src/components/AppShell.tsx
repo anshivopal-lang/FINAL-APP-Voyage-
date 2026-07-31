@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { BrandMark, BrandWordmark } from './Brand';
 import { ArchiveIcon, CompassIcon } from './Icons';
+import { SignOutButton } from './SignOutButton';
 import { Avatar } from './ui';
-import { useStore } from '@/lib/store';
+import type { SessionUser } from '@/lib/types';
 import { cx } from '@/lib/utils';
 
 const NAV = [
@@ -15,10 +16,15 @@ const NAV = [
   { href: '/archive', label: 'Archive', icon: ArchiveIcon },
 ];
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  user,
+  children,
+}: {
+  user: SessionUser;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
-  const { holidays, currentMemberId, setCurrentMember, ready } = useStore();
-  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   // The header only earns its border and blur once content passes under it.
@@ -31,38 +37,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  /**
-   * Every distinct person across the account's holidays. Switching identity is
-   * how the permission model can be seen working end to end.
-   */
-  const people = useMemo(() => {
-    const seen = new Map<
-      string,
-      { id: string; name: string; email: string; avatarColor: string; trips: number }
-    >();
-
-    for (const holiday of holidays) {
-      for (const member of holiday.members) {
-        const existing = seen.get(member.id);
-        if (existing) {
-          existing.trips += 1;
-        } else {
-          seen.set(member.id, {
-            id: member.id,
-            name: member.name,
-            email: member.email,
-            avatarColor: member.avatarColor,
-            trips: 1,
-          });
-        }
-      }
-    }
-
-    return [...seen.values()].sort((a, b) => b.trips - a.trips);
-  }, [holidays]);
-
-  const currentPerson =
-    people.find((person) => person.id === currentMemberId) ?? people[0];
+  // Close the menu whenever the route changes.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -98,9 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   href={item.href}
                   className={cx(
                     'relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-[0.8125rem] transition',
-                    active
-                      ? 'text-ink-100'
-                      : 'text-ink-400 hover:text-ink-200',
+                    active ? 'text-ink-100' : 'text-ink-400 hover:text-ink-200',
                   )}
                 >
                   <Icon width={15} height={15} />
@@ -113,81 +89,68 @@ export function AppShell({ children }: { children: ReactNode }) {
             })}
           </nav>
 
-          <div className="ml-auto flex items-center gap-3">
-            {ready && currentPerson ? (
-              <div className="relative">
+          {/*
+            The signed-in account. There is deliberately no way to switch to
+            another person from here — identity comes from the session cookie
+            and can only change by signing out and back in.
+          */}
+          <div className="relative ml-auto">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+              className="flex items-center gap-2.5 rounded-full border border-white/9 bg-white/4 py-1 pr-3.5 pl-1 text-left transition hover:border-white/16 hover:bg-white/7"
+            >
+              <Avatar
+                name={user.name}
+                color="#3f6b8b"
+                image={user.image}
+                size={28}
+              />
+              <span className="hidden min-w-0 sm:block">
+                <span className="block max-w-[9rem] truncate text-[0.8125rem] leading-tight text-ink-100">
+                  {user.name}
+                </span>
+                <span className="block text-[0.625rem] leading-tight tracking-[0.12em] text-ink-500 uppercase">
+                  Signed in
+                </span>
+              </span>
+            </button>
+
+            {menuOpen ? (
+              <>
                 <button
                   type="button"
-                  onClick={() => setSwitcherOpen((open) => !open)}
-                  className="flex items-center gap-2.5 rounded-full border border-white/9 bg-white/4 py-1 pr-3.5 pl-1 text-left transition hover:border-white/16 hover:bg-white/7"
+                  aria-label="Close menu"
+                  onClick={() => setMenuOpen(false)}
+                  className="fixed inset-0 z-10 cursor-default"
+                />
+                <div
+                  role="menu"
+                  className="panel animate-rise absolute right-0 z-20 mt-2.5 w-[17rem] overflow-hidden p-1.5"
                 >
-                  <Avatar
-                    name={currentPerson.name}
-                    color={currentPerson.avatarColor}
-                    size={28}
-                  />
-                  <span className="hidden min-w-0 sm:block">
-                    <span className="block truncate text-[0.8125rem] leading-tight text-ink-100">
-                      {currentPerson.name}
-                    </span>
-                    <span className="block text-[0.625rem] leading-tight tracking-[0.12em] text-ink-500 uppercase">
-                      Member
-                    </span>
-                  </span>
-                </button>
-
-                {switcherOpen ? (
-                  <>
-                    <button
-                      type="button"
-                      aria-label="Close menu"
-                      onClick={() => setSwitcherOpen(false)}
-                      className="fixed inset-0 z-10 cursor-default"
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <Avatar
+                      name={user.name}
+                      color="#3f6b8b"
+                      image={user.image}
+                      size={36}
                     />
-                    <div className="panel animate-rise absolute right-0 z-20 mt-2.5 w-[19rem] overflow-hidden p-1.5">
-                      <p className="eyebrow-muted px-3 py-2.5">View as member</p>
-                      {people.map((person) => (
-                        <button
-                          key={person.id}
-                          type="button"
-                          onClick={() => {
-                            setCurrentMember(person.id);
-                            setSwitcherOpen(false);
-                          }}
-                          className={cx(
-                            'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition',
-                            person.id === currentMemberId
-                              ? 'bg-gold-500/10'
-                              : 'hover:bg-white/5',
-                          )}
-                        >
-                          <Avatar
-                            name={person.name}
-                            color={person.avatarColor}
-                            size={32}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm text-ink-100">
-                              {person.name}
-                            </span>
-                            <span className="block truncate text-xs text-ink-500">
-                              {person.trips} holiday
-                              {person.trips === 1 ? '' : 's'}
-                            </span>
-                          </span>
-                          {person.id === currentMemberId ? (
-                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-500" />
-                          ) : null}
-                        </button>
-                      ))}
-                      <p className="mt-1 border-t border-white/7 px-3 pt-3 pb-2 text-xs leading-relaxed text-ink-500">
-                        Switching identity applies the permissions that person
-                        holds on each holiday.
-                      </p>
-                    </div>
-                  </>
-                ) : null}
-              </div>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm text-ink-100">
+                        {user.name}
+                      </span>
+                      <span className="block truncate text-xs text-ink-500">
+                        {user.email}
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="my-1 border-t border-white/7" />
+                  <SignOutButton />
+                </div>
+              </>
             ) : null}
           </div>
         </div>

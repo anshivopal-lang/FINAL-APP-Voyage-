@@ -42,13 +42,13 @@ export function MembersSection({
     (member) => member.id === transferring,
   );
 
-  function add() {
+  async function add() {
     if (!invite.email.trim()) {
       toast.error('Enter an email address to invite someone.');
       return;
     }
     if (
-      toast.fromResult(
+      await toast.fromResult(
         store.addMember(holiday.id, invite),
         `${invite.name.trim() || invite.email} added to the holiday.`,
       )
@@ -79,7 +79,7 @@ export function MembersSection({
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-sm text-ink-100">
                       {member.name}
-                      {member.id === store.currentMemberId ? (
+                      {member.userId === store.currentUserId ? (
                         <Badge tone="gold">You</Badge>
                       ) : null}
                       {owner ? <Badge tone="sage">Owner</Badge> : null}

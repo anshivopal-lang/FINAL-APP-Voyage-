@@ -2,8 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { Cormorant_Garamond, Inter } from 'next/font/google';
 
 import './globals.css';
-import { AppShell } from '@/components/AppShell';
-import { Providers } from '@/components/Providers';
 
 /**
  * Self-hosted at build time by next/font — no runtime request to Google, and no
@@ -30,6 +28,7 @@ export const metadata: Metadata = {
   },
   description:
     'Plan, share and archive every holiday. A private membership platform for the trips that matter.',
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
@@ -43,9 +42,7 @@ export default function RootLayout({
     <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <body>
         <div className="grain" aria-hidden="true" />
-        <Providers>
-          <AppShell>{children}</AppShell>
-        </Providers>
+        {children}
       </body>
     </html>
   );

@@ -324,16 +324,13 @@ export function ArchiveSection({ holiday }: { holiday: Holiday }) {
       <ConfirmDialog
         open={confirming}
         onCancel={() => setConfirming(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
           setConfirming(false);
-          if (
-            toast.fromResult(
-              store.archiveHoliday(holiday.id),
-              'Holiday moved to the archive.',
-            )
-          ) {
-            router.push('/archive');
-          }
+          const ok = await toast.fromResult(
+            store.archiveHoliday(holiday.id),
+            'Holiday moved to the archive.',
+          );
+          if (ok) router.push('/archive');
         }}
         tone="neutral"
         title="Archive this holiday?"
@@ -457,15 +454,12 @@ export function DangerSection({ holiday }: { holiday: Holiday }) {
           <button
             type="button"
             className="btn btn-ghost"
-            onClick={() => {
-              if (
-                toast.fromResult(
-                  store.archiveHoliday(holiday.id),
-                  'Holiday archived instead. Nothing was deleted.',
-                )
-              ) {
-                router.push('/archive');
-              }
+            onClick={async () => {
+              const ok = await toast.fromResult(
+                store.archiveHoliday(holiday.id),
+                'Holiday archived instead. Nothing was deleted.',
+              );
+              if (ok) router.push('/archive');
             }}
             disabled={holiday.status === 'archived'}
           >
@@ -486,16 +480,13 @@ export function DangerSection({ holiday }: { holiday: Holiday }) {
       <ConfirmDialog
         open={purging}
         onCancel={() => setPurging(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
           setPurging(false);
-          if (
-            toast.fromResult(
-              store.purgeSections(holiday.id, selected),
-              'Selected data erased.',
-            )
-          ) {
-            setSelected([]);
-          }
+          const ok = await toast.fromResult(
+            store.purgeSections(holiday.id, selected),
+            'Selected data erased.',
+          );
+          if (ok) setSelected([]);
         }}
         title="Erase selected holiday data?"
         description="The holiday itself is kept — only the sections you picked are removed."
@@ -515,16 +506,14 @@ export function DangerSection({ holiday }: { holiday: Holiday }) {
       <ConfirmDialog
         open={deleting}
         onCancel={() => setDeleting(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
           setDeleting(false);
-          if (
-            toast.fromResult(
-              store.deleteHoliday(holiday.id),
-              `${holiday.name} was permanently deleted.`,
-            )
-          ) {
-            router.push('/');
-          }
+          const ok = await toast.fromResult(
+            // The API re-checks this name server-side before deleting.
+            store.deleteHoliday(holiday.id, holiday.name),
+            `${holiday.name} was permanently deleted.`,
+          );
+          if (ok) router.push('/');
         }}
         title={`Permanently delete “${holiday.name}”?`}
         description="Everyone loses access immediately and nothing can be recovered."

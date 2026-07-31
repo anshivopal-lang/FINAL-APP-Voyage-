@@ -69,7 +69,7 @@ export default function HolidaySettingsPage() {
     );
   }
 
-  if (!canAccess(holiday, store.currentMemberId)) {
+  if (!canAccess(holiday, store.currentUserId)) {
     return (
       <EmptyState
         icon={<LockIcon width={28} height={28} />}

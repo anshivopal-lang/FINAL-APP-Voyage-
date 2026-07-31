@@ -4,11 +4,18 @@ import type { ReactNode } from 'react';
 
 import { ToastProvider } from './Toast';
 import { StoreProvider } from '@/lib/store';
+import type { SessionUser } from '@/lib/types';
 
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({
+  user,
+  children,
+}: {
+  user: SessionUser;
+  children: ReactNode;
+}) {
   return (
     <ToastProvider>
-      <StoreProvider>{children}</StoreProvider>
+      <StoreProvider user={user}>{children}</StoreProvider>
     </ToastProvider>
   );
 }
