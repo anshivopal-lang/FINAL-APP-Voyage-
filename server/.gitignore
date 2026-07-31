@@ -1,0 +1,8 @@
+node_modules/
+
+# The JSON store holds real user records and password hashes.
+data/
+*.tmp
+
+.env
+.env.*.local
