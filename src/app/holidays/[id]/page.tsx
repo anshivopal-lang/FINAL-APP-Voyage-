@@ -147,19 +147,20 @@ export default function HolidayPage() {
         </div>
       ) : null}
 
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div className="panel-flat flex gap-1 overflow-x-auto p-1.5">
         {TABS.map((item) => {
           const Icon = item.icon;
+          const active = tab === item.key;
           return (
             <button
               key={item.key}
               type="button"
               onClick={() => setTab(item.key)}
               className={cx(
-                'flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-sm transition',
-                tab === item.key
-                  ? 'border-gold-500/40 bg-gold-500/12 text-gold-300'
-                  : 'border-white/8 bg-white/3 text-ink-400 hover:bg-white/6 hover:text-ink-200',
+                'flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-[0.8125rem] transition duration-200',
+                active
+                  ? 'bg-gold-500/12 text-gold-300 shadow-[0_1px_0_rgba(255,255,255,0.06)_inset]'
+                  : 'text-ink-400 hover:bg-white/4 hover:text-ink-200',
               )}
             >
               <Icon width={15} height={15} />
@@ -169,7 +170,7 @@ export default function HolidayPage() {
         })}
       </div>
 
-      <div className="panel p-5 sm:p-6">
+      <div className="panel p-5 sm:p-7">
         {tab === 'overview' ? <OverviewPanel holiday={holiday} /> : null}
 
         {tab === 'itinerary' ? (

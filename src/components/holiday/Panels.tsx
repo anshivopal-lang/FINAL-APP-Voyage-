@@ -84,9 +84,14 @@ export function ItineraryPanel({ holiday, readOnly }: PanelProps) {
         <div className="space-y-6">
           {byDay.map(([day, items]) => (
             <div key={day}>
-              <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.1em] text-gold-500">
-                {day === 'unscheduled' ? 'Not yet scheduled' : formatDateLong(day)}
-              </p>
+              <div className="mb-3 flex items-center gap-3">
+                <p className="eyebrow shrink-0">
+                  {day === 'unscheduled'
+                    ? 'Not yet scheduled'
+                    : formatDateLong(day)}
+                </p>
+                <span className="rule-gold min-w-0 flex-1 opacity-50" />
+              </div>
               <div className="space-y-2">
                 {items.map((item) => (
                   <div
@@ -1119,9 +1124,7 @@ export function OverviewPanel({ holiday }: { holiday: Holiday }) {
             <ClockIcon width={18} height={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-gold-500">
-              Up next
-            </p>
+            <p className="eyebrow">Up next</p>
             <p className="mt-1 text-sm text-ink-100">{next.title}</p>
             <p className="mt-0.5 text-xs text-ink-500">
               {formatDateLong(next.date)}
@@ -1153,10 +1156,8 @@ function LegRow({
 }) {
   return (
     <div>
-      <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-ink-500">
-        {label}
-      </p>
-      <p className="mt-1 text-sm text-ink-100">
+      <p className="eyebrow-muted">{label}</p>
+      <p className="mt-1.5 text-sm text-ink-100">
         {leg.date ? formatDateLong(leg.date) : 'Date to be confirmed'}
         {leg.time ? ` · ${leg.time}` : ''}
       </p>
@@ -1170,11 +1171,9 @@ function LegRow({
 
 function CountTile({ label, value }: { label: string; value: number }) {
   return (
-    <div className="panel-flat px-3.5 py-3 text-center">
-      <p className="display text-xl text-ink-100">{value}</p>
-      <p className="mt-0.5 text-[0.6875rem] uppercase tracking-[0.08em] text-ink-500">
-        {label}
-      </p>
+    <div className="panel-flat px-3.5 py-4 text-center transition-colors duration-300 hover:border-white/12">
+      <p className="numeral text-2xl leading-none text-ink-100">{value}</p>
+      <p className="eyebrow-muted mt-2">{label}</p>
     </div>
   );
 }

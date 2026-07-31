@@ -118,14 +118,10 @@ export default function ArchivePage() {
 
   return (
     <div className="animate-rise">
-      <div className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold-500">
-          Travel history
-        </p>
-        <h1 className="display mt-1.5 text-3xl text-ink-100 sm:text-4xl">
-          Archived trips
-        </h1>
-        <p className="mt-2 max-w-xl text-sm text-ink-400">
+      <div className="mb-10">
+        <p className="eyebrow">Travel history</p>
+        <h1 className="display-xl mt-3 text-ink-100">Archived trips</h1>
+        <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-400">
           Everything you have finished, kept exactly as it was. Archived
           holidays stay private and are visible only to the people who travelled
           with you.
@@ -133,7 +129,7 @@ export default function ArchivePage() {
       </div>
 
       {archived.length > 0 ? (
-        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mb-9 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatTile label="Trips" value={String(archived.length)} />
           <StatTile label="Countries" value={String(countries.length)} />
           <StatTile label="Nights away" value={String(totalNights)} />
@@ -260,17 +256,18 @@ function ArchivedHolidayRow({
   );
 
   return (
-    <article className="panel overflow-hidden">
-      <div className="flex flex-col gap-4 sm:flex-row">
+    <article className="panel group overflow-hidden">
+      <div className="flex flex-col gap-5 sm:flex-row">
         <Cover
           cover={holiday.coverImage}
-          className="h-28 shrink-0 sm:h-auto sm:w-48"
+          zoom
+          className="h-32 shrink-0 sm:h-auto sm:w-56"
         />
 
-        <div className="min-w-0 flex-1 px-5 py-4 sm:pl-0">
+        <div className="min-w-0 flex-1 px-5 py-5 sm:pl-0">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="display truncate text-lg text-ink-100">
+              <h2 className="display truncate text-xl text-ink-100">
                 {holiday.name}
               </h2>
               <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-400">
@@ -421,9 +418,7 @@ function ArchivedHolidayRow({
           </ArchiveColumn>
 
           <div className="lg:col-span-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-400">
-              Who travelled
-            </p>
+            <p className="eyebrow-muted mb-3">Who travelled</p>
             <div className="flex flex-wrap gap-3">
               {holiday.members.map((member) => (
                 <span
@@ -463,9 +458,11 @@ function ArchiveColumn({
 }) {
   return (
     <div>
-      <p className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.08em] text-ink-400">
+      <p className="eyebrow-muted mb-2.5 flex items-center justify-between">
         {title}
-        <span className="font-normal normal-case text-ink-500">{count}</span>
+        <span className="font-normal normal-case tracking-normal text-ink-500">
+          {count}
+        </span>
       </p>
       {count === 0 ? (
         <p className="text-xs text-ink-500">{empty}</p>

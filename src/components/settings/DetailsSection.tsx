@@ -166,7 +166,7 @@ export function DetailsSection({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <fieldset className="panel-flat p-4">
-          <legend className="px-1 text-xs font-semibold uppercase tracking-[0.08em] text-gold-500">
+          <legend className="eyebrow px-1">
             Departure
           </legend>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
@@ -222,7 +222,7 @@ export function DetailsSection({
         </fieldset>
 
         <fieldset className="panel-flat p-4">
-          <legend className="px-1 text-xs font-semibold uppercase tracking-[0.08em] text-gold-500">
+          <legend className="eyebrow px-1">
             Arrival home
           </legend>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">

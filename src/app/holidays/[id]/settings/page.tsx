@@ -99,14 +99,10 @@ export default function HolidaySettingsPage() {
         Back to {holiday.name}
       </Link>
 
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-9 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold-500">
-            Holiday settings
-          </p>
-          <h1 className="display mt-1.5 text-2xl text-ink-100 sm:text-3xl">
-            {holiday.name}
-          </h1>
+          <p className="eyebrow">Holiday settings</p>
+          <h1 className="display-lg mt-3 text-ink-100">{holiday.name}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {holiday.status === 'archived' ? (
@@ -132,12 +128,12 @@ export default function HolidaySettingsPage() {
                     type="button"
                     onClick={() => setSection(item.key)}
                     className={cx(
-                      'flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition',
+                      'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[0.8125rem] transition duration-200',
                       active
                         ? danger
                           ? 'bg-rose-500/12 text-[#f0b4b8]'
-                          : 'bg-gold-500/12 text-gold-300'
-                        : 'text-ink-400 hover:bg-white/5 hover:text-ink-200',
+                          : 'bg-gold-500/12 text-gold-300 shadow-[0_1px_0_rgba(255,255,255,0.06)_inset]'
+                        : 'text-ink-400 hover:bg-white/4 hover:text-ink-200',
                     )}
                   >
                     <Icon width={16} height={16} />

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { BrandMark, BrandWordmark } from './Brand';
 import { ArchiveIcon, CompassIcon } from './Icons';
 import { Avatar } from './ui';
 import { useStore } from '@/lib/store';
@@ -18,6 +19,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { holidays, currentMemberId, setCurrentMember, ready } = useStore();
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  // The header only earns its border and blur once content passes under it.
+  useEffect(() => {
+    function onScroll() {
+      setScrolled(window.scrollY > 8);
+    }
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   /**
    * Every distinct person across the account's holidays. Switching identity is
@@ -53,19 +65,26 @@ export function AppShell({ children }: { children: ReactNode }) {
     people.find((person) => person.id === currentMemberId) ?? people[0];
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-50 border-b border-white/7 bg-ink-950/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-gold-500/40 bg-gold-500/12 text-gold-400">
-              <CompassIcon width={17} height={17} />
+    <div className="flex min-h-screen flex-col">
+      <header
+        className={cx(
+          'sticky top-0 z-50 transition-all duration-300',
+          scrolled
+            ? 'border-b border-white/7 bg-ink-950/72 backdrop-blur-xl'
+            : 'border-b border-transparent',
+        )}
+      >
+        <div className="mx-auto flex h-[4.5rem] max-w-6xl items-center gap-5 px-5 sm:px-8">
+          <Link href="/" className="group flex items-center gap-2.5">
+            <span className="transition-transform duration-500 group-hover:rotate-45">
+              <BrandMark size={28} />
             </span>
-            <span className="display text-lg tracking-tight text-ink-100">
-              Voyage
-            </span>
+            <BrandWordmark />
           </Link>
 
-          <nav className="ml-2 flex items-center gap-1">
+          <span className="hidden h-5 w-px bg-white/10 sm:block" />
+
+          <nav className="flex items-center gap-0.5">
             {NAV.map((item) => {
               const active =
                 item.href === '/'
@@ -78,14 +97,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={cx(
-                    'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition',
+                    'relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-[0.8125rem] transition',
                     active
-                      ? 'bg-white/8 text-ink-100'
-                      : 'text-ink-400 hover:bg-white/5 hover:text-ink-200',
+                      ? 'text-ink-100'
+                      : 'text-ink-400 hover:text-ink-200',
                   )}
                 >
                   <Icon width={15} height={15} />
                   <span className="hidden sm:inline">{item.label}</span>
+                  {active ? (
+                    <span className="absolute inset-x-3 -bottom-px h-px bg-gradient-to-r from-transparent via-gold-500 to-transparent" />
+                  ) : null}
                 </Link>
               );
             })}
@@ -97,19 +119,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setSwitcherOpen((open) => !open)}
-                  className="flex items-center gap-2 rounded-xl border border-white/9 bg-white/4 px-2 py-1.5 text-left transition hover:bg-white/8"
+                  className="flex items-center gap-2.5 rounded-full border border-white/9 bg-white/4 py-1 pr-3.5 pl-1 text-left transition hover:border-white/16 hover:bg-white/7"
                 >
                   <Avatar
                     name={currentPerson.name}
                     color={currentPerson.avatarColor}
-                    size={26}
+                    size={28}
                   />
                   <span className="hidden min-w-0 sm:block">
-                    <span className="block truncate text-xs font-medium text-ink-100">
+                    <span className="block truncate text-[0.8125rem] leading-tight text-ink-100">
                       {currentPerson.name}
                     </span>
-                    <span className="block text-[0.6875rem] text-ink-500">
-                      Signed in
+                    <span className="block text-[0.625rem] leading-tight tracking-[0.12em] text-ink-500 uppercase">
+                      Member
                     </span>
                   </span>
                 </button>
@@ -122,10 +144,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       onClick={() => setSwitcherOpen(false)}
                       className="fixed inset-0 z-10 cursor-default"
                     />
-                    <div className="panel absolute right-0 z-20 mt-2 w-72 overflow-hidden p-1.5">
-                      <p className="px-2.5 py-2 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-ink-500">
-                        View as member
-                      </p>
+                    <div className="panel animate-rise absolute right-0 z-20 mt-2.5 w-[19rem] overflow-hidden p-1.5">
+                      <p className="eyebrow-muted px-3 py-2.5">View as member</p>
                       {people.map((person) => (
                         <button
                           key={person.id}
@@ -135,16 +155,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                             setSwitcherOpen(false);
                           }}
                           className={cx(
-                            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition',
+                            'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition',
                             person.id === currentMemberId
-                              ? 'bg-gold-500/12'
-                              : 'hover:bg-white/6',
+                              ? 'bg-gold-500/10'
+                              : 'hover:bg-white/5',
                           )}
                         >
                           <Avatar
                             name={person.name}
                             color={person.avatarColor}
-                            size={30}
+                            size={32}
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm text-ink-100">
@@ -155,9 +175,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                               {person.trips === 1 ? '' : 's'}
                             </span>
                           </span>
+                          {person.id === currentMemberId ? (
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-500" />
+                          ) : null}
                         </button>
                       ))}
-                      <p className="border-t border-white/7 px-2.5 pt-2.5 pb-2 text-xs leading-relaxed text-ink-500">
+                      <p className="mt-1 border-t border-white/7 px-3 pt-3 pb-2 text-xs leading-relaxed text-ink-500">
                         Switching identity applies the permissions that person
                         holds on each holiday.
                       </p>
@@ -170,12 +193,24 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 pt-8 pb-20 sm:px-6">{children}</main>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-5 pt-10 pb-24 sm:px-8">
+        {children}
+      </main>
 
-      <footer className="border-t border-white/7 py-8">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 text-xs text-ink-500 sm:px-6">
-          <p>Voyage — private holiday management.</p>
-          <p>Your holidays are visible only to members you invite.</p>
+      <footer className="mt-auto">
+        <div className="mx-auto max-w-6xl px-5 sm:px-8">
+          <div className="rule-gold opacity-40" />
+          <div className="flex flex-wrap items-center justify-between gap-3 py-8">
+            <div className="flex items-center gap-2.5">
+              <BrandMark size={18} />
+              <p className="text-xs text-ink-500">
+                Voyager — private holiday management.
+              </p>
+            </div>
+            <p className="text-xs text-ink-500">
+              Your holidays are visible only to members you invite.
+            </p>
+          </div>
         </div>
       </footer>
     </div>

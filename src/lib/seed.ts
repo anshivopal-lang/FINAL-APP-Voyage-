@@ -1,5 +1,5 @@
 import { AVATAR_COLORS, PHOTO_GRADIENTS } from './covers';
-import type { Holiday, Member, NotificationSettings, VoyageState } from './types';
+import type { Holiday, Member, NotificationSettings, VoyagerState } from './types';
 
 export const STATE_VERSION = 1;
 
@@ -648,7 +648,7 @@ function buildIceland(): Holiday {
   };
 }
 
-export function createSeedState(): VoyageState {
+export function createSeedState(): VoyagerState {
   return {
     version: STATE_VERSION,
     currentMemberId: CURRENT_MEMBER_ID,

@@ -1,8 +1,8 @@
 {
-  "name": "voyage",
+  "name": "voyager",
   "version": "1.0.0",
   "private": true,
-  "description": "Voyage — a premium holiday management platform for planning, sharing and archiving trips.",
+  "description": "Voyager — a premium holiday management platform for planning, sharing and archiving trips.",
   "type": "module",
   "engines": {
     "node": ">=20.9.0"

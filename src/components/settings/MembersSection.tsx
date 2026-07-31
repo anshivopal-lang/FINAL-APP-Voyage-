@@ -60,7 +60,7 @@ export function MembersSection({
   return (
     <div className="space-y-7">
       <section>
-        <h3 className="display mb-1 text-base text-ink-100">Members</h3>
+        <h3 className="display mb-1.5 text-lg text-ink-100">Members</h3>
         <p className="mb-4 text-sm text-ink-400">
           Everyone here can see the holiday. What they can change is set by their
           role and any extra permissions below.
@@ -216,7 +216,7 @@ export function MembersSection({
       </section>
 
       <section>
-        <h3 className="display mb-1 text-base text-ink-100">Permissions</h3>
+        <h3 className="display mb-1.5 text-lg text-ink-100">Permissions</h3>
         <p className="mb-4 text-sm text-ink-400">
           A tick from the role is automatic. Add extra permissions on top for
           individual members — deleting and archiving stay with the owner.
@@ -226,7 +226,7 @@ export function MembersSection({
           <table className="w-full min-w-[42rem] border-collapse text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-ink-900/95 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.08em] text-ink-400">
+                <th className="eyebrow-muted sticky left-0 z-10 bg-ink-900 px-3 py-3 text-left">
                   Permission
                 </th>
                 {holiday.members.map((member) => (
@@ -248,7 +248,7 @@ export function MembersSection({
             <tbody>
               {PERMISSIONS.map((permission) => (
                 <tr key={permission.key} className="border-t border-white/6">
-                  <td className="sticky left-0 z-10 bg-ink-900/95 px-3 py-2.5">
+                  <td className="sticky left-0 z-10 bg-ink-900 px-3 py-3">
                     <span className="flex items-center gap-1.5 text-ink-200">
                       {permission.label}
                       {permission.ownerOnly ? (

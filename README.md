@@ -1,4 +1,4 @@
-# Voyage — Holiday Management System
+# Voyager — Holiday Management System
 
 A private, premium-feeling platform for planning, sharing and archiving holidays.
 Built with Next.js (App Router), React 19, TypeScript and Tailwind CSS v4.
@@ -86,7 +86,7 @@ Do not convert this project to CommonJS: Next.js App Router source is ESM, and m
 
 ## Data
 
-State lives in the browser (`localStorage`, key `voyage.state.v1`) behind the
+State lives in the browser (`localStorage`, key `voyager.state.v1`) behind the
 repository-shaped API in `src/lib/store.tsx`, and is seeded with four example
 holidays on first run. Open the app in two tabs to see changes propagate between
 sessions. Swapping the store's persistence for a real database and API routes

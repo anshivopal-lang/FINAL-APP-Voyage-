@@ -59,7 +59,7 @@ export function NotificationsSection({ holiday }: { holiday: Holiday }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="display mb-1 text-base text-ink-100">Notifications</h3>
+        <h3 className="display mb-1.5 text-lg text-ink-100">Notifications</h3>
         <p className="text-sm text-ink-400">
           These settings are yours for this holiday. Other members choose their
           own.
@@ -144,7 +144,7 @@ export function CurrencySection({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="display mb-1 text-base text-ink-100">Currency</h3>
+        <h3 className="display mb-1.5 text-lg text-ink-100">Currency</h3>
         <p className="text-sm text-ink-400">
           Bookings and expenses can be entered in any currency the holiday
           tracks. Totals are shown in the primary currency.
@@ -223,7 +223,7 @@ export function DocumentsSection({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="display mb-1 text-base text-ink-100">Documents</h3>
+        <h3 className="display mb-1.5 text-lg text-ink-100">Documents</h3>
         <p className="text-sm text-ink-400">
           Documents marked confidential are hidden from members without the
           document permission.
@@ -248,7 +248,7 @@ export function ArchiveSection({ holiday }: { holiday: Holiday }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="display mb-1 text-base text-ink-100">Archive</h3>
+        <h3 className="display mb-1.5 text-lg text-ink-100">Archive</h3>
         <p className="text-sm text-ink-400">
           Archiving is the safe alternative to deleting. Everything is kept and
           stays private to the holiday’s members.
@@ -385,7 +385,7 @@ export function DangerSection({ holiday }: { holiday: Holiday }) {
   if (!isOwner) {
     return (
       <div className="space-y-4">
-        <h3 className="display text-base text-ink-100">Data & deletion</h3>
+        <h3 className="display text-lg text-ink-100">Data & deletion</h3>
         <p className="rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-sm text-ink-400">
           Only the holiday owner can erase holiday data or delete this holiday.
         </p>
@@ -396,7 +396,7 @@ export function DangerSection({ holiday }: { holiday: Holiday }) {
   return (
     <div className="space-y-8">
       <section>
-        <h3 className="display mb-1 text-base text-ink-100">Data deletion</h3>
+        <h3 className="display mb-1.5 text-lg text-ink-100">Data deletion</h3>
         <p className="mb-4 text-sm text-ink-400">
           Clear part of the holiday without deleting the trip itself. Useful
           before duplicating a template, or when a plan changes completely.
@@ -444,7 +444,7 @@ export function DangerSection({ holiday }: { holiday: Holiday }) {
       </section>
 
       <section className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-5">
-        <h3 className="display mb-1 flex items-center gap-2 text-base text-[#f0b4b8]">
+        <h3 className="display mb-1.5 flex items-center gap-2 text-lg text-[#f0b4b8]">
           <AlertIcon width={17} height={17} />
           Delete this holiday
         </h3>

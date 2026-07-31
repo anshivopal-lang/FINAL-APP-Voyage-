@@ -89,15 +89,13 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-rise">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold-500">
-            Welcome back
-          </p>
-          <h1 className="display mt-1.5 text-3xl text-ink-100 sm:text-4xl">
+          <p className="eyebrow">Welcome back</p>
+          <h1 className="display-xl mt-3 text-ink-100">
             {store.currentMemberName.split(' ')[0]}’s holidays
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-ink-400">
+          <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-400">
             Every trip you own or have been invited to. Create as many as you
             like — nothing here is ever shared outside your members.
           </p>
@@ -113,7 +111,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-9 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile
           label="Active"
           value={String(active.length)}
@@ -140,7 +138,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+      <div className="mb-8 flex flex-wrap items-center gap-3">
         <div className="relative min-w-0 flex-1 sm:max-w-xs">
           <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-500">
             <SearchIcon width={15} height={15} />
@@ -188,7 +186,7 @@ export default function DashboardPage() {
           description={`No active holiday matches “${query}”. Try the archive for past trips.`}
         />
       ) : (
-        <div className="space-y-10">
+        <div className="space-y-12">
           {upcoming.length > 0 ? (
             <section>
               <SectionTitle

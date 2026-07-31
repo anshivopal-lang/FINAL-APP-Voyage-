@@ -62,11 +62,13 @@ export function Modal({
           size === 'lg' && 'max-w-4xl',
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-white/7 px-5 py-4 sm:px-6">
+        <div className="flex items-start justify-between gap-4 border-b border-white/7 px-5 py-5 sm:px-7">
           <div>
-            <h2 className="display text-lg text-ink-100 sm:text-xl">{title}</h2>
+            <h2 className="display text-xl text-ink-100 sm:text-2xl">{title}</h2>
             {description ? (
-              <p className="mt-1 text-sm text-ink-400">{description}</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-ink-400">
+                {description}
+              </p>
             ) : null}
           </div>
           <button
@@ -79,10 +81,10 @@ export function Modal({
           </button>
         </div>
 
-        <div className="px-5 py-5 sm:px-6">{children}</div>
+        <div className="px-5 py-6 sm:px-7">{children}</div>
 
         {footer ? (
-          <div className="flex flex-wrap justify-end gap-2 border-t border-white/7 px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-white/7 px-5 py-4 sm:px-7">
             {footer}
           </div>
         ) : null}

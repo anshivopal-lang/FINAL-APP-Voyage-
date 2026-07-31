@@ -1,14 +1,14 @@
 import { createSeedState, STATE_VERSION } from './seed';
-import type { VoyageState } from './types';
+import type { VoyagerState } from './types';
 
-export const STORAGE_KEY = 'voyage.state.v1';
+export const STORAGE_KEY = 'voyager.state.v1';
 
 /**
  * Reads persisted state. Falls back to the seed on first run, on a version
  * mismatch, or if the stored payload is unreadable — never throws, because a
  * corrupt entry should not brick the app.
  */
-export function loadState(): VoyageState {
+export function loadState(): VoyagerState {
   if (typeof window === 'undefined') {
     return createSeedState();
   }
@@ -17,7 +17,7 @@ export function loadState(): VoyageState {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return createSeedState();
 
-    const parsed = JSON.parse(raw) as Partial<VoyageState>;
+    const parsed = JSON.parse(raw) as Partial<VoyagerState>;
     if (
       parsed.version !== STATE_VERSION ||
       !Array.isArray(parsed.holidays) ||
@@ -26,13 +26,13 @@ export function loadState(): VoyageState {
       return createSeedState();
     }
 
-    return parsed as VoyageState;
+    return parsed as VoyagerState;
   } catch {
     return createSeedState();
   }
 }
 
-export function saveState(state: VoyageState): void {
+export function saveState(state: VoyagerState): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));

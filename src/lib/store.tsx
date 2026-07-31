@@ -29,7 +29,7 @@ import type {
   NotificationSettings,
   Permission,
   Photo,
-  VoyageState,
+  VoyagerState,
 } from './types';
 import { createId, nowIso } from './utils';
 
@@ -140,12 +140,12 @@ interface StoreValue {
 const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<VoyageState | null>(null);
-  const stateRef = useRef<VoyageState | null>(null);
+  const [state, setState] = useState<VoyagerState | null>(null);
+  const stateRef = useRef<VoyagerState | null>(null);
   /** Set while we are the tab writing, so we ignore our own storage event. */
   const writingRef = useRef(false);
 
-  const commit = useCallback((next: VoyageState) => {
+  const commit = useCallback((next: VoyagerState) => {
     stateRef.current = next;
     setState(next);
     writingRef.current = true;
@@ -177,7 +177,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const holidays = state?.holidays ?? [];
     const currentMemberId = state?.currentMemberId ?? CURRENT_MEMBER_ID;
 
-    function current(): VoyageState {
+    function current(): VoyagerState {
       return stateRef.current ?? { version: 1, currentMemberId, holidays: [] };
     }
 

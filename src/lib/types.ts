@@ -1,5 +1,5 @@
 /**
- * Domain model for the Voyage holiday management system.
+ * Domain model for the Voyager holiday management system.
  *
  * Everything a holiday owns lives on the `Holiday` record so that archiving,
  * restoring and permanent deletion are single, atomic operations.
@@ -154,7 +154,7 @@ export interface Holiday {
 }
 
 /** Shape persisted to storage. Versioned so migrations stay possible. */
-export interface VoyageState {
+export interface VoyagerState {
   version: number;
   /** The member id the session is acting as. */
   currentMemberId: string;
