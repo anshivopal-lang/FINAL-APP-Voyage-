@@ -1,56 +1,81 @@
 import NextAuth from 'next-auth';
-import Google from 'next-auth/providers/google';
+import Credentials from 'next-auth/providers/credentials';
 
-import { upsertUser } from '@/lib/server/repository';
+import { rateLimit } from '@/lib/server/rate-limit';
+import { verifyCredentials } from '@/lib/server/repository';
 
 /**
- * Auth.js v5 configuration.
+ * Auth.js v5 — email and password only.
  *
- * Sessions are stateless JWTs in an httpOnly, SameSite=Lax cookie — nothing
- * about identity is readable or writable from client JavaScript, and the only
+ * Sessions are stateless JWTs in an httpOnly, SameSite=Lax cookie, so nothing
+ * about identity is readable or writable from client JavaScript. The only
  * source of a user id anywhere in the app is `auth()` on the server.
- *
- * Google is the sole provider: there is no password to steal and no way to
- * assume another account from the UI.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      // Always let the user pick which Google account to use, rather than
-      // silently reusing whichever one the browser is already signed into.
-      authorization: { params: { prompt: 'select_account' } },
+    Credentials({
+      name: 'Email and password',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+
+      /**
+       * Runs on every sign-in attempt.
+       *
+       * Returning null makes Auth.js answer with a generic CredentialsSignin
+       * error. That is deliberate: the UI must not be able to distinguish
+       * "no such account" from "wrong password", or it becomes an oracle for
+       * which email addresses are registered.
+       */
+      async authorize(raw, request) {
+        const email = typeof raw?.email === 'string' ? raw.email.trim() : '';
+        const password = typeof raw?.password === 'string' ? raw.password : '';
+
+        if (!email || !password) return null;
+
+        // Throttle per address *and* per target account, so neither spraying
+        // one password across many emails nor hammering one account is cheap.
+        const ip =
+          request?.headers?.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+          'unknown';
+
+        for (const key of [`login:ip:${ip}`, `login:email:${email.toLowerCase()}`]) {
+          if (!rateLimit(key, 10, 15 * 60 * 1000).allowed) return null;
+        }
+
+        const user = await verifyCredentials(email, password);
+        if (!user) return null;
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        };
+      },
     }),
   ],
 
+  // Credentials sign-in requires JWT sessions; the database-session strategy
+  // is not supported for this provider.
   session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
 
   pages: { signIn: '/signin', error: '/signin' },
 
   callbacks: {
     /**
-     * Runs on sign-in and on every token refresh. On first sign-in we mint (or
-     * fetch) the local user row and pin its id into the token, so every later
+     * `user` is present only on the request that established the session —
+     * that is where the account id gets pinned into the token, so every later
      * request identifies the user without another database round trip.
      */
-    async jwt({ token, account, profile }) {
-      if (account && profile) {
-        const user = await upsertUser({
-          // Google's `sub` is stable and unique per account — the right join
-          // key. Email is mutable and must never be the primary identity.
-          googleId: profile.sub as string,
-          email: (profile.email as string).toLowerCase(),
-          name: (profile.name as string) ?? (profile.email as string),
-          image: (profile.picture as string) ?? null,
-        });
-
-        token.userId = user.id;
+    async jwt({ token, user }) {
+      if (user) {
+        token.userId = user.id as string;
         token.email = user.email;
         token.name = user.name;
-        token.picture = user.image;
+        token.picture = user.image ?? null;
       }
-
       return token;
     },
 

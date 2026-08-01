@@ -19,7 +19,7 @@ export function Avatar({
   color: string;
   size?: number;
   ring?: boolean;
-  /** Google profile picture, when the member has signed in. */
+  /** Optional avatar URL. Falls back to initials when absent. */
   image?: string | null;
 }) {
   if (image) {

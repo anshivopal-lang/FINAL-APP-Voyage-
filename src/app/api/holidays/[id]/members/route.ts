@@ -23,7 +23,7 @@ type Context = { params: Promise<{ id: string }> };
 /**
  * Invite by email. If that email already has an account the membership is
  * bound to their user id immediately; otherwise it stays pending and is
- * claimed the first time they sign in with Google.
+ * claimed the first time they register with that email.
  */
 export const POST = route(async (request: Request, context: Context) => {
   const user = await requireUser();

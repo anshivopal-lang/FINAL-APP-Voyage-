@@ -1,16 +1,24 @@
 # Voyager — Holiday Management System
 
 A private, multi-user platform for planning, sharing and archiving holidays.
-Next.js (App Router), TypeScript, Tailwind CSS v4, Auth.js v5 with Google
-Sign-In, and Postgres.
+Next.js (App Router), TypeScript, Tailwind CSS v4, Auth.js v5 with email +
+password credentials, and Postgres.
 
 ## Security model
 
 Identity comes from one place only: the signed session cookie. There is no way
 to select, spoof or switch accounts from the UI.
 
-- **Google OAuth via Auth.js v5.** Sessions are stateless JWTs in an httpOnly,
-  SameSite=Lax cookie. No token is ever readable from client JavaScript.
+- **Email + password via Auth.js v5 CredentialsProvider.** Sessions are
+  stateless JWTs in an httpOnly, SameSite=Lax cookie. No token is ever readable
+  from client JavaScript.
+- **Passwords are hashed with bcrypt** (cost 12 by default) and never logged,
+  returned by an API, or stored in plain text.
+- **Sign-in never reveals whether an email is registered.** A wrong password
+  and an unknown address produce the same message, and a dummy bcrypt
+  comparison runs when no account matches so the two take the same time.
+- **Credential endpoints are rate limited** — per IP and per target email on
+  sign-in, per IP on sign-up.
 - **Ownership keys on the account id**, never on an email or a membership id —
   both of which can be re-pointed at a different person.
 - **Every API route re-checks the session server-side.** The client's own
@@ -26,13 +34,14 @@ to select, spoof or switch accounts from the UI.
   from any member update rather than rejected, so a client posting the whole
   permission grid cannot escalate by accident.
 
-Run the proof:
+Run the proofs:
 
 ```bash
-node --env-file=.env.local tests/data-isolation.mjs
+node --env-file=.env.local tests/credentials-auth.mjs   # 32 checks
+node --env-file=.env.local tests/data-isolation.mjs     # 47 checks
 ```
 
-47 checks covering: unauthenticated access, forged and wrong-secret cookies,
+The isolation suite covers covering: unauthenticated access, forged and wrong-secret cookies,
 cross-account reads and writes across twelve endpoints, sharing, privilege
 escalation, confidential-document leakage, authorship spoofing, and immediate
 revocation on member removal.
@@ -49,7 +58,7 @@ revocation on member removal.
 Extra permissions can be granted individually on top of a role. Trips are
 private to their owner until someone is invited by email — if that person has
 no account yet the membership stays pending and is claimed automatically the
-first time they sign in with Google.
+first time they register with that address.
 
 ## Local setup
 
@@ -59,16 +68,7 @@ first time they sign in with Google.
    createdb voyager_dev
    ```
 
-2. **Google OAuth client.** Google Cloud Console → APIs & Services →
-   Credentials → *Create OAuth client ID* → Web application.
-
-   Authorised redirect URI (must match exactly):
-
-   ```
-   http://localhost:3000/api/auth/callback/google
-   ```
-
-3. **Environment.** Copy `.env.example` to `.env.local` and fill it in.
+2. **Environment.** Copy `.env.example` to `.env.local` and fill it in.
    Generate the secret with `openssl rand -base64 32`.
 
 4. **Run.**
@@ -90,8 +90,7 @@ reports whether the process can reach Postgres.
 
    | Variable | Notes |
    | --- | --- |
-   | `GOOGLE_CLIENT_ID` | From the Google OAuth client |
-   | `GOOGLE_CLIENT_SECRET` | Server-only; never prefix with `NEXT_PUBLIC_` |
+   | `BCRYPT_ROUNDS` | Optional. Defaults to 12 |
    | `AUTH_SECRET` | `openssl rand -base64 32`. Changing it signs everyone out |
    | `NEXTAUTH_SECRET` | Same value — set both so either convention works |
    | `DATABASE_URL` | Pooled Postgres connection string |
@@ -99,26 +98,21 @@ reports whether the process can reach Postgres.
    `NEXTAUTH_URL` is **not** required on Vercel: the deployment URL is detected
    automatically and `trustHost` is enabled. Set it only for a custom domain.
 
-4. Add your production redirect URI to the Google OAuth client:
-
-   ```
-   https://your-domain.com/api/auth/callback/google
-   ```
-
-   Preview deployments get a new URL each time, so either add them explicitly
-   or test OAuth on production only.
-
 No secret is exposed to the browser: nothing is prefixed with `NEXT_PUBLIC_`,
-and OAuth, session verification and every database query run server-side.
+and password hashing, session verification and every database query run
+server-side. There is no OAuth provider to configure and no third-party
+redirect URI to keep in sync.
 
 ## Architecture
 
 ```
 src/
-  auth.ts                     Auth.js config — Google provider, JWT sessions
+  auth.ts                     Auth.js config — credentials provider, JWT sessions
   app/
     (app)/                    Authenticated pages; layout redirects to /signin
     signin/                   Public sign-in page
+    signup/                   Public registration page
+    api/auth/register/        Account creation (bcrypt hashing, validation)
     api/holidays/…            REST API; every route calls requireUser()
     api/health/               Liveness probe
   lib/
@@ -128,8 +122,10 @@ src/
       db.ts                   Postgres pool, schema migration
       repository.ts           Data access — every read scoped by user
       guard.ts                requireUser, authoriseHoliday, error handling
+      rate-limit.ts           In-memory throttle for credential endpoints
       validation.ts           Zod schemas for every request body
 tests/
+  credentials-auth.mjs        Registration + sign-in + sign-out flow
   data-isolation.mjs          Two-account isolation proof
 ```
 
@@ -137,10 +133,25 @@ Data lives in Postgres in three tables: `users`, `holidays` (trip document as
 JSONB) and `holiday_members` (a real table, so "which holidays may this user
 see" is an indexed join rather than a scan).
 
+## Known gaps
+
+- **No password reset.** A user who forgets their password cannot recover the
+  account without a manual database update. Adding it needs an email sender,
+  which this app does not currently have.
+- **No email verification.** Addresses are trusted as typed, so a holiday
+  invitation could be claimed by someone who registers with an address they do
+  not own.
+- **The rate limiter is per-instance.** Serverless functions do not share
+  memory, so it is a speed bump rather than a guarantee. Move it to Vercel KV
+  or Upstash Redis for a real throttle.
+- **Accounts created under the old Google flow have no password** and cannot
+  sign in until one is set. The `google_id` column is kept, nullable, so that
+  mapping is not lost.
+
 ## Note on `server/`
 
 The standalone Express API in `server/` predates this work and is **superseded**.
-It has its own email/password authentication that bypasses Google entirely, and
-its JSON-file store cannot persist on Vercel. It is not part of the Next.js
+It has a second, separate email/password implementation and a JSON-file store
+that cannot persist on Vercel. It is not part of the Next.js
 build and is not deployed, but it should be deleted rather than left as a second
 way into the same data model.

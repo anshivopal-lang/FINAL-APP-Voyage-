@@ -1,6 +1,6 @@
 import { handlers } from '@/auth';
 
-// The Google OAuth exchange and the database live in Node, not the edge.
+// bcrypt and the database driver need Node, not the edge runtime.
 export const runtime = 'nodejs';
 
 export const { GET, POST } = handlers;

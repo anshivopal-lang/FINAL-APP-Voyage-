@@ -35,19 +35,22 @@ await fetch(`${BASE}/api/health`);
 await client.query('DELETE FROM holidays');
 await client.query('DELETE FROM users');
 
-const ALICE = { id: 'usr_alice', googleId: 'google-alice-111', email: 'alice@example.com', name: 'Alice Nakamura' };
-const BOB = { id: 'usr_bob', googleId: 'google-bob-222', email: 'bob@example.com', name: 'Bob Oyelaran' };
+const ALICE = { id: 'usr_alice', email: 'alice@example.com', name: 'Alice Nakamura' };
+const BOB = { id: 'usr_bob', email: 'bob@example.com', name: 'Bob Oyelaran' };
 
+// Seeded directly: this suite exercises the authorisation layer, so it mints
+// session tokens rather than going through the sign-in form. The credentials
+// flow itself is covered by tests/credentials-auth.mjs.
 for (const u of [ALICE, BOB]) {
   await client.query(
-    'INSERT INTO users (id, google_id, email, name) VALUES ($1,$2,$3,$4)',
-    [u.id, u.googleId, u.email, u.name],
+    'INSERT INTO users (id, email, name, password_hash) VALUES ($1,$2,$3,$4)',
+    [u.id, u.email, u.name, '$2b$04$notusedbythissuite000000000000000000000000000000000000'],
   );
 }
 
 async function cookieFor(user) {
   const token = await encode({
-    token: { sub: user.googleId, userId: user.id, email: user.email, name: user.name },
+    token: { sub: user.id, userId: user.id, email: user.email, name: user.name },
     secret: SECRET,
     salt: COOKIE,
     maxAge: 3600,
@@ -83,7 +86,7 @@ ok('garbage cookie → 401', r.status === 401, r.body);
 
 // A cookie signed with a DIFFERENT secret must not be accepted.
 const forged = await encode({
-  token: { sub: 'google-alice-111', userId: ALICE.id, email: ALICE.email },
+  token: { sub: ALICE.id, userId: ALICE.id, email: ALICE.email },
   secret: 'an-attacker-chosen-secret-that-is-long-enough',
   salt: COOKIE,
   maxAge: 3600,
@@ -196,7 +199,7 @@ ok('Bob immediately gets 404 again', r.status === 404, r.body);
 r = await call('GET', '/api/holidays', { cookie: bobCookie });
 ok('shared holiday gone from Bob list', !r.body.holidays.some(h => h.id === aliceHoliday), r.body.holidays.map(h => h.name));
 
-console.log('\n=== 10. Pending invitation is claimed on first sign-in ===');
+console.log('\n=== 10. Pending invitation is claimed on registration ===');
 r = await call('POST', `/api/holidays/${aliceHoliday}/members`, { cookie: aliceCookie, body: { email: 'carol@example.com', role: 'traveller' } });
 const carolPending = r.body.holiday.members.find(m => m.email === 'carol@example.com');
 ok('invite before signup is pending', carolPending.pending === true && carolPending.userId === null, carolPending);
@@ -205,13 +208,13 @@ ok('invite before signup is pending', carolPending.pending === true && carolPend
 const { rows } = await client.query('SELECT 1');
 void rows;
 await client.query(
-  'INSERT INTO users (id, google_id, email, name) VALUES ($1,$2,$3,$4)',
-  ['usr_carol', 'google-carol-333', 'carol@example.com', 'Carol Byrne'],
+  'INSERT INTO users (id, email, name, password_hash) VALUES ($1,$2,$3,$4)',
+  ['usr_carol', 'carol@example.com', 'Carol Byrne', '$2b$04$notusedbythissuite000000000000000000000000000000000000'],
 );
 await client.query(
   "UPDATE holiday_members SET user_id = 'usr_carol' WHERE user_id IS NULL AND lower(email) = 'carol@example.com'",
 );
-const carolCookie = await cookieFor({ id: 'usr_carol', googleId: 'google-carol-333', email: 'carol@example.com', name: 'Carol Byrne' });
+const carolCookie = await cookieFor({ id: 'usr_carol', email: 'carol@example.com', name: 'Carol Byrne' });
 r = await call('GET', '/api/holidays', { cookie: carolCookie });
 ok('Carol sees the trip she was invited to', r.body.holidays.some(h => h.id === aliceHoliday), r.body.holidays.map(h => h.name));
 ok("Carol does NOT see Bob's private trip", !r.body.holidays.some(h => h.id === bobHoliday), r.body.holidays.map(h => h.name));

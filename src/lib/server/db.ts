@@ -83,17 +83,36 @@ export async function transaction<T>(
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
-  id          TEXT PRIMARY KEY,
-  google_id   TEXT NOT NULL UNIQUE,
-  email       TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  image       TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  id            TEXT PRIMARY KEY,
+  email         TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  password_hash TEXT,
+  image         TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Invitations are matched on email, so the lookup must be case-insensitive
--- and fast.
-CREATE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
+-- Migration from the previous Google-only schema. Idempotent, so an existing
+-- deployment picks it up on its next cold start and a fresh one skips it.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'users' AND column_name = 'google_id'
+  ) THEN
+    -- Google is no longer an identity source, so the column must not block
+    -- password sign-ups. Left in place rather than dropped so a rollback does
+    -- not lose the mapping.
+    ALTER TABLE users ALTER COLUMN google_id DROP NOT NULL;
+  END IF;
+END $$;
+
+DROP INDEX IF EXISTS users_email_lower_idx;
+
+-- Email is now the login identity, so it has to be unique. Case-insensitive,
+-- because people do not type their own address consistently.
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (lower(email));
 
 CREATE TABLE IF NOT EXISTS holidays (
   id         TEXT PRIMARY KEY,

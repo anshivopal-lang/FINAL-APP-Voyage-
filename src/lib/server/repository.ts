@@ -2,6 +2,7 @@ import 'server-only';
 
 import { randomBytes } from 'node:crypto';
 
+import bcrypt from 'bcryptjs';
 import type { PoolClient } from 'pg';
 
 import { query, transaction } from './db';
@@ -24,89 +25,115 @@ const AVATAR_COLORS = [
 
 export interface AppUser {
   id: string;
-  googleId: string;
   email: string;
   name: string;
   image: string | null;
 }
 
 /* ------------------------------------------------------------------ *
- * Users
+ * Users — email + password
  * ------------------------------------------------------------------ */
 
+/** Work factor for bcrypt. 12 is a sane 2020s default; lower only in tests. */
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS ?? 12);
+
 /**
- * Finds or creates the local user for a Google account, keyed on Google's
- * stable `sub`. Also adopts any invitations that were addressed to this email
- * before the person had signed in.
+ * A hash of a throwaway value, compared against when no account matches so
+ * that a wrong email and a wrong password cost the same amount of time.
+ * Without this, response latency tells an attacker which emails are registered.
  */
-export async function upsertUser(input: {
-  googleId: string;
-  email: string;
-  name: string;
-  image: string | null;
-}): Promise<AppUser> {
-  return transaction(async (client) => {
-    const existing = await client.query(
-      `UPDATE users
-          SET email = $2, name = $3, image = $4
-        WHERE google_id = $1
-      RETURNING id, google_id, email, name, image`,
-      [input.googleId, input.email, input.name, input.image],
-    );
-
-    let row = existing.rows[0];
-
-    if (!row) {
-      const inserted = await client.query(
-        `INSERT INTO users (id, google_id, email, name, image)
-              VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, google_id, email, name, image`,
-        [createId('usr'), input.googleId, input.email, input.name, input.image],
-      );
-      row = inserted.rows[0];
-    }
-
-    // Claim pending invitations addressed to this email.
-    await client.query(
-      `UPDATE holiday_members
-          SET user_id = $1, joined_at = now()
-        WHERE user_id IS NULL AND lower(email) = lower($2)`,
-      [row.id, input.email],
-    );
-
-    return {
-      id: row.id,
-      googleId: row.google_id,
-      email: row.email,
-      name: row.name,
-      image: row.image,
-    };
-  });
-}
+const DUMMY_HASH = bcrypt.hashSync('voyager-timing-equaliser', BCRYPT_ROUNDS);
 
 export async function findUserByEmail(email: string): Promise<AppUser | null> {
   const rows = await query<{
     id: string;
-    google_id: string;
     email: string;
     name: string;
     image: string | null;
   }>(
-    `SELECT id, google_id, email, name, image
+    `SELECT id, email, name, image
        FROM users WHERE lower(email) = lower($1) LIMIT 1`,
     [email],
   );
 
   const row = rows[0];
-  if (!row) return null;
+  return row ? { id: row.id, email: row.email, name: row.name, image: row.image } : null;
+}
 
-  return {
-    id: row.id,
-    googleId: row.google_id,
-    email: row.email,
-    name: row.name,
-    image: row.image,
-  };
+/**
+ * Creates an account and adopts any holiday invitations that were addressed to
+ * this email before the person had registered.
+ *
+ * Returns null when the email is already taken, so the caller can decide what
+ * to tell the user.
+ */
+export async function createUser(input: {
+  email: string;
+  name: string;
+  password: string;
+}): Promise<AppUser | null> {
+  const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+  const email = input.email.trim().toLowerCase();
+
+  return transaction(async (client) => {
+    const existing = await client.query(
+      `SELECT 1 FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+    if (existing.rows.length > 0) return null;
+
+    const inserted = await client.query(
+      `INSERT INTO users (id, email, name, password_hash)
+            VALUES ($1, $2, $3, $4)
+       RETURNING id, email, name, image`,
+      [createId('usr'), email, input.name.trim(), passwordHash],
+    );
+
+    const row = inserted.rows[0];
+
+    await client.query(
+      `UPDATE holiday_members
+          SET user_id = $1, joined_at = now()
+        WHERE user_id IS NULL AND lower(email) = lower($2)`,
+      [row.id, email],
+    );
+
+    return { id: row.id, email: row.email, name: row.name, image: row.image };
+  });
+}
+
+/**
+ * Checks an email and password against the database.
+ *
+ * Always performs a bcrypt comparison — even when no account exists — so the
+ * response takes the same time either way. Returns null for every failure mode
+ * without distinguishing them, because the caller must not leak which one it
+ * was.
+ */
+export async function verifyCredentials(
+  email: string,
+  password: string,
+): Promise<AppUser | null> {
+  const rows = await query<{
+    id: string;
+    email: string;
+    name: string;
+    image: string | null;
+    password_hash: string | null;
+  }>(
+    `SELECT id, email, name, image, password_hash
+       FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+    [email],
+  );
+
+  const row = rows[0];
+  const matches = await bcrypt.compare(password, row?.password_hash ?? DUMMY_HASH);
+
+  // `password_hash` is null for accounts created under the old Google-only
+  // flow; those cannot sign in with a password until one is set.
+  if (!row || !row.password_hash || !matches) return null;
+
+  return { id: row.id, email: row.email, name: row.name, image: row.image };
 }
 
 /* ------------------------------------------------------------------ *

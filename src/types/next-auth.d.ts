@@ -3,7 +3,7 @@ import type { DefaultSession } from 'next-auth';
 declare module 'next-auth' {
   interface Session {
     user: {
-      /** Our own user id, not Google's — set in the session callback. */
+      /** Our own database user id — set in the session callback. */
       id: string;
     } & DefaultSession['user'];
   }
