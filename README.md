@@ -81,6 +81,26 @@ first time they register with that address.
 The schema is created automatically on first request. `GET /api/health`
 reports whether the process can reach Postgres.
 
+## Creating an account
+
+Normally you just sign up at `/signup` — the first account is not special.
+
+For an account created out-of-band (or to reset a forgotten password, which the
+app itself cannot yet do):
+
+```bash
+node --env-file=.env.local scripts/create-account.mjs you@example.com "Your Name"
+node --env-file=.env.local scripts/create-account.mjs you@example.com --reset
+```
+
+The password is generated at run time and printed once. It is never written to
+a file or committed. The script needs `DATABASE_URL`, so it grants nothing that
+direct SQL access would not — it is an operator convenience, not a back door.
+
+**There is no admin or superuser role.** `owner` is a per-holiday role earned by
+creating a holiday; it confers nothing outside that trip. No account can see or
+manage another user's data.
+
 ## Deploying to Vercel
 
 1. Push to GitHub and import the repository in Vercel.
