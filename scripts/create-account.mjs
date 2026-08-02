@@ -16,6 +16,7 @@
  * user; "owner" is a per-holiday role earned by creating a holiday.
  */
 import { randomInt } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
@@ -64,13 +65,35 @@ const rounds = Number(process.env.BCRYPT_ROUNDS ?? 12);
 const passwordHash = await bcrypt.hash(password, rounds);
 const normalised = email.trim().toLowerCase();
 
+/**
+ * Same TLS policy as the app: no TLS to loopback, full verification of chain
+ * and hostname otherwise. Kept in step with src/lib/server/ssl.ts by hand
+ * because that module is `server-only` and cannot be imported from a script.
+ */
+function sslFor(url) {
+  const host = new URL(url).hostname;
+
+  if (['localhost', '127.0.0.1', '::1'].includes(host)) return false;
+
+  if (process.env.DATABASE_SSL_NO_VERIFY === 'true') {
+    console.warn('  ! TLS certificate verification disabled for this run.\n');
+    return { rejectUnauthorized: false };
+  }
+
+  const ca = process.env.DATABASE_CA_CERT?.trim();
+
+  return {
+    rejectUnauthorized: true,
+    servername: host,
+    ...(ca
+      ? { ca: ca.startsWith('-----BEGIN') ? ca : readFileSync(ca, 'utf8') }
+      : {}),
+  };
+}
+
 const client = new pg.Client({
   connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.DATABASE_URL.includes('localhost') ||
-    process.env.DATABASE_URL.includes('127.0.0.1')
-      ? undefined
-      : { rejectUnauthorized: false },
+  ssl: sslFor(process.env.DATABASE_URL),
 });
 
 await client.connect();

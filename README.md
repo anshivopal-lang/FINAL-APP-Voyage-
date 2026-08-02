@@ -81,6 +81,40 @@ first time they register with that address.
 The schema is created automatically on first request. `GET /api/health`
 reports whether the process can reach Postgres.
 
+## Database TLS
+
+Connections to a non-loopback database are fully verified — certificate chain
+**and** hostname, which is what `sslmode=verify-full` means. Encryption without
+verification (`sslmode=require`, or node-postgres' `rejectUnauthorized: false`)
+stops passive eavesdropping but not an attacker who can answer in the
+database's place, because nothing checks the certificate belongs to the host
+you asked for.
+
+One thing worth knowing: **`sslmode` in the connection string does not control
+this.** node-postgres lets an explicit `ssl` option replace whatever `sslmode`
+says rather than merging them, so changing only the URL has no effect on the
+app. The policy lives in `src/lib/server/ssl.ts`.
+
+| Host | Behaviour |
+| --- | --- |
+| `localhost` / `127.0.0.1` / `::1` | TLS off — no certificate to verify and traffic never leaves the machine |
+| anything else | `verify-full` against Node's trusted roots, or `DATABASE_CA_CERT` if set |
+
+Set `DATABASE_CA_CERT` only when your provider's certificate is not publicly
+trusted. It takes a file path or the PEM inline — use inline on Vercel, which
+has no filesystem to put a file on. As of writing: Neon and Vercel Postgres are
+publicly trusted and need nothing; Supabase may need `prod-ca-2021.crt` from the
+dashboard; AWS RDS needs its regional CA bundle. Check your provider's current
+docs rather than trusting this list.
+
+`DATABASE_SSL_NO_VERIFY=true` disables verification and logs a warning on every
+boot. It exists for providers that publish no usable CA — Heroku Postgres has
+historically been one. It is a real downgrade, not a formality.
+
+A misconfiguration is immediate and obvious rather than silent: `/api/health`
+returns `degraded` and the log names the TLS failure (`unable to verify the
+first certificate`, `Hostname/IP does not match…`).
+
 ## Creating an account
 
 Normally you just sign up at `/signup` — the first account is not special.

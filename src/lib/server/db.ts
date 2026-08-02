@@ -2,6 +2,8 @@ import 'server-only';
 
 import { Pool, type PoolClient } from 'pg';
 
+import { resolveSsl } from './ssl';
+
 /**
  * Postgres connection.
  *
@@ -28,15 +30,19 @@ function createPool(): Pool {
     );
   }
 
-  const isLocal =
-    connectionString.includes('localhost') ||
-    connectionString.includes('127.0.0.1');
+  const { ssl, mode, reason } = resolveSsl(connectionString);
+
+  if (mode === 'no-verify') {
+    console.warn(`[voyager] Postgres TLS is NOT verified: ${reason}`);
+  } else {
+    console.log(`[voyager] Postgres TLS: ${mode} — ${reason}`);
+  }
 
   return new Pool({
     connectionString,
-    // Managed Postgres providers terminate non-TLS connections; local ones
-    // usually have no certificate at all.
-    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+    // Decided in ssl.ts. Note this object replaces any `sslmode=` in the
+    // connection string — node-postgres does not merge the two.
+    ssl,
     max: Number(process.env.PGPOOL_MAX ?? 5),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
