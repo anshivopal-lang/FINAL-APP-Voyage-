@@ -90,10 +90,21 @@ stops passive eavesdropping but not an attacker who can answer in the
 database's place, because nothing checks the certificate belongs to the host
 you asked for.
 
-One thing worth knowing: **`sslmode` in the connection string does not control
-this.** node-postgres lets an explicit `ssl` option replace whatever `sslmode`
-says rather than merging them, so changing only the URL has no effect on the
-app. The policy lives in `src/lib/server/ssl.ts`.
+**`sslmode` is stripped from the connection string before it reaches
+node-postgres.** Two reasons:
+
+- pg emits `SECURITY WARNING: The SSL modes 'prefer', 'require', and
+  'verify-ca' are treated as aliases for 'verify-full'…` whenever it parses one
+  of those three. Removing the parameter silences it at the source, so a stale
+  `DATABASE_URL` cannot bring it back.
+- More seriously, when `sslmode` is present node-postgres **discards the `ca`**
+  from an explicit `ssl` option. Any provider needing a custom root then fails
+  with `unable to verify the first certificate` even with `DATABASE_CA_CERT`
+  set correctly.
+
+Nothing is lost by removing it, because the `ssl` object the app supplies is
+stricter than any `sslmode` value. The policy lives in `src/lib/server/ssl.ts`
+and is mirrored in `scripts/` and `tests/`.
 
 | Host | Behaviour |
 | --- | --- |

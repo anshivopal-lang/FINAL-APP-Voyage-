@@ -9,6 +9,8 @@
  *
  * WARNING: truncates `users` and `holidays`. Development database only.
  */
+import { readFileSync } from 'node:fs';
+
 import pg from 'pg';
 
 const BASE = process.env.TEST_BASE_URL ?? 'http://localhost:3000';
@@ -19,7 +21,42 @@ const ok = (label, cond, extra) => {
   else { fail++; console.log(`FAIL  ${label}${extra !== undefined ? ` -> ${JSON.stringify(extra)}` : ''}`); }
 };
 
-const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+/**
+ * Same TLS policy as the app (src/lib/server/ssl.ts): no TLS to loopback, full
+ * verification otherwise. An sslmode= parameter is stripped because it makes
+ * node-postgres discard the CA and emits a deprecation warning.
+ */
+function pgClient() {
+  const url = process.env.DATABASE_URL;
+  const host = new URL(url).hostname;
+  const clean = (() => {
+    try {
+      const u = new URL(url);
+      u.searchParams.delete('sslmode');
+      u.searchParams.delete('uselibpqcompat');
+      return u.toString();
+    } catch {
+      return url;
+    }
+  })();
+
+  const ca = process.env.DATABASE_CA_CERT?.trim();
+  const ssl = ['localhost', '127.0.0.1', '::1'].includes(host)
+    ? false
+    : process.env.DATABASE_SSL_NO_VERIFY === 'true'
+      ? { rejectUnauthorized: false }
+      : {
+          rejectUnauthorized: true,
+          servername: host,
+          ...(ca
+            ? { ca: ca.startsWith('-----BEGIN') ? ca : readFileSync(ca, 'utf8') }
+            : {}),
+        };
+
+  return new pg.Client({ connectionString: clean, ssl });
+}
+
+const client = pgClient();
 await client.connect();
 await fetch(`${BASE}/api/health`);
 await client.query('DELETE FROM holidays');

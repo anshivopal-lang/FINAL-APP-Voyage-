@@ -19,6 +19,42 @@ import type { ConnectionOptions } from 'node:tls';
  * string alone cannot secure this — it has to be decided here.
  */
 
+/**
+ * Removes `sslmode` (and its companion `uselibpqcompat`) from a connection
+ * string. Everything about TLS is decided by `resolveSsl` below.
+ *
+ * Two reasons, and the second is the important one:
+ *
+ * 1. pg-connection-string emits a process warning whenever it parses
+ *    `sslmode=prefer`, `require` or `verify-ca`, because pg currently treats
+ *    all three as `verify-full` and will switch to weaker libpq semantics in
+ *    pg v9. Stripping the parameter silences it at the source, so a stale
+ *    DATABASE_URL cannot reintroduce it.
+ *
+ * 2. When `sslmode` is present, node-postgres drops the `ca` from an explicit
+ *    `ssl` option. A provider whose certificate needs a custom root — Supabase,
+ *    AWS RDS — then fails with "unable to verify the first certificate" even
+ *    though DATABASE_CA_CERT was set correctly. Verified empirically: the same
+ *    connection succeeds with the parameter removed and fails with it present.
+ *
+ * Nothing is lost by removing it, because the `ssl` object we pass is stricter
+ * than any `sslmode` value.
+ */
+export function stripSslMode(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    const before = url.search;
+
+    url.searchParams.delete('sslmode');
+    url.searchParams.delete('uselibpqcompat');
+
+    return url.search === before ? connectionString : url.toString();
+  } catch {
+    // Not a parseable URL — resolveSsl reports that with a better message.
+    return connectionString;
+  }
+}
+
 export type SslDecision =
   | { ssl: false; mode: 'disabled'; reason: string }
   | { ssl: ConnectionOptions; mode: 'verify-full'; reason: string }

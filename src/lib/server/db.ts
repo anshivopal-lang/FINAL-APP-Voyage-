@@ -2,7 +2,7 @@ import 'server-only';
 
 import { Pool, type PoolClient } from 'pg';
 
-import { resolveSsl } from './ssl';
+import { resolveSsl, stripSslMode } from './ssl';
 
 /**
  * Postgres connection.
@@ -32,6 +32,10 @@ function createPool(): Pool {
 
   const { ssl, mode, reason } = resolveSsl(connectionString);
 
+  // Must happen before the string reaches pg: an sslmode= parameter both
+  // triggers a deprecation warning and causes pg to discard our CA.
+  const cleanConnectionString = stripSslMode(connectionString);
+
   if (mode === 'no-verify') {
     console.warn(`[voyager] Postgres TLS is NOT verified: ${reason}`);
   } else {
@@ -39,9 +43,8 @@ function createPool(): Pool {
   }
 
   return new Pool({
-    connectionString,
-    // Decided in ssl.ts. Note this object replaces any `sslmode=` in the
-    // connection string — node-postgres does not merge the two.
+    connectionString: cleanConnectionString,
+    // The single source of truth for TLS — see ssl.ts.
     ssl,
     max: Number(process.env.PGPOOL_MAX ?? 5),
     idleTimeoutMillis: 30_000,

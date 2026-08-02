@@ -69,7 +69,21 @@ const normalised = email.trim().toLowerCase();
  * Same TLS policy as the app: no TLS to loopback, full verification of chain
  * and hostname otherwise. Kept in step with src/lib/server/ssl.ts by hand
  * because that module is `server-only` and cannot be imported from a script.
+ *
+ * An sslmode= parameter makes node-postgres discard the `ca` below and emits a
+ * deprecation warning, so it is removed — the explicit ssl object is stricter.
  */
+function stripSslMode(url) {
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('sslmode');
+    u.searchParams.delete('uselibpqcompat');
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 function sslFor(url) {
   const host = new URL(url).hostname;
 
@@ -92,7 +106,7 @@ function sslFor(url) {
 }
 
 const client = new pg.Client({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: stripSslMode(process.env.DATABASE_URL),
   ssl: sslFor(process.env.DATABASE_URL),
 });
 
