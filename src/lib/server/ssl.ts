@@ -14,9 +14,9 @@ import type { ConnectionOptions } from 'node:tls';
  * database's place, because nothing checks that the certificate presented
  * actually belongs to the host named in the URL.
  *
- * A caller-supplied `ssl` object REPLACES anything `sslmode=` says in the
- * connection string; node-postgres does not merge the two. So the connection
- * string alone cannot secure this — it has to be decided here.
+ * `sslmode=` in the connection string cannot express this policy and actively
+ * interferes with it, so `stripSslMode` below removes it and everything is
+ * decided here instead. See that function for the two specific reasons.
  */
 
 /**
