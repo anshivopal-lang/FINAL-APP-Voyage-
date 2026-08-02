@@ -35,8 +35,10 @@ await fetch(`${BASE}/api/health`);
 await client.query('DELETE FROM holidays');
 await client.query('DELETE FROM users');
 
-const ALICE = { id: 'usr_alice', email: 'alice@example.com', name: 'Alice Nakamura' };
-const BOB = { id: 'usr_bob', email: 'bob@example.com', name: 'Bob Oyelaran' };
+// Fixed UUIDs so failures are reproducible; user ids are uuid columns now.
+const ALICE = { id: '11111111-1111-4111-8111-111111111111', email: 'alice@example.com', name: 'Alice Nakamura' };
+const BOB = { id: '22222222-2222-4222-8222-222222222222', email: 'bob@example.com', name: 'Bob Oyelaran' };
+const CAROL_ID = '33333333-3333-4333-8333-333333333333';
 
 // Seeded directly: this suite exercises the authorisation layer, so it mints
 // session tokens rather than going through the sign-in form. The credentials
@@ -209,12 +211,13 @@ const { rows } = await client.query('SELECT 1');
 void rows;
 await client.query(
   'INSERT INTO users (id, email, name, password_hash) VALUES ($1,$2,$3,$4)',
-  ['usr_carol', 'carol@example.com', 'Carol Byrne', '$2b$04$notusedbythissuite000000000000000000000000000000000000'],
+  [CAROL_ID, 'carol@example.com', 'Carol Byrne', '$2b$04$notusedbythissuite000000000000000000000000000000000000'],
 );
 await client.query(
-  "UPDATE holiday_members SET user_id = 'usr_carol' WHERE user_id IS NULL AND lower(email) = 'carol@example.com'",
+  "UPDATE holiday_members SET user_id = $1 WHERE user_id IS NULL AND lower(email) = 'carol@example.com'",
+  [CAROL_ID],
 );
-const carolCookie = await cookieFor({ id: 'usr_carol', email: 'carol@example.com', name: 'Carol Byrne' });
+const carolCookie = await cookieFor({ id: CAROL_ID, email: 'carol@example.com', name: 'Carol Byrne' });
 r = await call('GET', '/api/holidays', { cookie: carolCookie });
 ok('Carol sees the trip she was invited to', r.body.holidays.some(h => h.id === aliceHoliday), r.body.holidays.map(h => h.name));
 ok("Carol does NOT see Bob's private trip", !r.body.holidays.some(h => h.id === bobHoliday), r.body.holidays.map(h => h.name));

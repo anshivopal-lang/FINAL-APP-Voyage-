@@ -43,11 +43,25 @@ export interface SessionUser {
  * It comes from the signed session cookie — never from a header, query
  * parameter or request body, so it cannot be forged by editing a request.
  */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function requireUser(): Promise<SessionUser> {
   const session = await auth();
 
   if (!session?.user?.id) {
     throw unauthorised();
+  }
+
+  /**
+   * Sessions issued before user ids became UUIDs carry a "usr_…" value. That
+   * string reaches Postgres as a comparison against a uuid column and raises
+   * `invalid input syntax for type uuid` — a 500 on every request rather than
+   * a recoverable one. Rejecting it here turns a stale cookie into an ordinary
+   * expired session: the user is sent back to sign in.
+   */
+  if (!UUID_PATTERN.test(session.user.id)) {
+    throw unauthorised('Your session has expired. Please sign in again.');
   }
 
   return {

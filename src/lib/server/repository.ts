@@ -82,11 +82,14 @@ export async function createUser(input: {
     );
     if (existing.rows.length > 0) return null;
 
+    // `id` is omitted so Postgres applies its gen_random_uuid() default —
+    // one generator, rather than the database and the application each
+    // having an opinion about identifier format.
     const inserted = await client.query(
-      `INSERT INTO users (id, email, name, password_hash)
-            VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (email, name, password_hash)
+            VALUES ($1, $2, $3)
        RETURNING id, email, name, image`,
-      [createId('usr'), email, input.name.trim(), passwordHash],
+      [email, input.name.trim(), passwordHash],
     );
 
     const row = inserted.rows[0];
