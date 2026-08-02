@@ -185,6 +185,14 @@ It runs automatically on the first request after deploy, only on a database
 still carrying the text column, and the whole schema script is one transaction:
 if any step fails the database is left on the old schema untouched.
 
+Every catalogue lookup is qualified to `current_schema()`. This matters on
+Supabase, which ships an `auth.users` table whose `id` is already `uuid`: an
+unqualified `table_name = 'users'` matches both schemas and the guard then
+fails with *"more than one row returned by a subquery used as an expression"*,
+taking the whole schema script — and the app — down with it. If you see
+`/api/health` reporting `database: unreachable` with that message in the logs,
+you are on a build from before this was fixed.
+
 **Every existing session breaks**, because the id inside the JWT no longer
 matches any row. Signed-in users get a 401 and are sent back to sign in rather
 than seeing a silently empty account. To flush them deliberately, rotate

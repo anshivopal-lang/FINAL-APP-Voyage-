@@ -99,13 +99,141 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-     WHERE table_name = 'users' AND column_name = 'google_id'
+     WHERE table_schema = current_schema()
+       AND table_name = 'users'
+       AND column_name = 'google_id'
   ) THEN
     -- Google is no longer an identity source, so the column must not block
     -- password sign-ups. Left in place rather than dropped so a rollback does
     -- not lose the mapping.
     ALTER TABLE users ALTER COLUMN google_id DROP NOT NULL;
   END IF;
+END $$;
+
+-- ------------------------------------------------------------------ --
+-- Re-key user identifiers from prefixed text ("usr_kX3n…") to UUID.
+--
+-- This is not a type change: the old values are not parseable as UUIDs, so
+-- every row gets a new identifier and all three references are remapped
+-- together. Runs only on a database still carrying the text column, so a
+-- fresh install skips it entirely.
+--
+-- It has to run BEFORE the child tables below are created, because those
+-- declare UUID foreign keys and Postgres will not point a uuid column at a
+-- text primary key.
+--
+-- Every catalogue lookup is qualified to current_schema(). Unqualified,
+-- "table_name = 'users'" also matches other schemas — Supabase ships an
+-- auth.users whose id is uuid — and the scalar subquery then fails with
+-- "more than one row returned by a subquery used as an expression",
+-- taking the whole schema script and therefore the app down with it.
+--
+-- The script executes as one implicit transaction, so a failure anywhere
+-- rolls the database back to the text schema untouched.
+-- ------------------------------------------------------------------ --
+DO $$
+DECLARE
+  users_id_type TEXT;
+  has_holidays  BOOLEAN;
+  has_members   BOOLEAN;
+BEGIN
+  SELECT data_type INTO users_id_type
+    FROM information_schema.columns
+   WHERE table_schema = current_schema()
+     AND table_name = 'users'
+     AND column_name = 'id';
+
+  IF users_id_type IS DISTINCT FROM 'text' THEN
+    RETURN;
+  END IF;
+
+  -- The child tables may not exist yet on a partially provisioned database.
+  has_holidays := to_regclass(current_schema() || '.holidays') IS NOT NULL;
+  has_members  := to_regclass(current_schema() || '.holiday_members') IS NOT NULL;
+
+  -- 1. Mint the replacement identifiers.
+  ALTER TABLE users ADD COLUMN new_id UUID NOT NULL DEFAULT gen_random_uuid();
+
+  -- 2. Carry every reference across via the old text key.
+  IF has_holidays THEN
+    ALTER TABLE holidays ADD COLUMN new_owner_id UUID;
+
+    UPDATE holidays h
+       SET new_owner_id = u.new_id
+      FROM users u
+     WHERE u.id = h.owner_id;
+
+    -- 3. Chat messages embed the author's user id inside holidays.data, which
+    --    no foreign key covers. Left alone, every existing message would keep
+    --    a dangling text id and stop being recognised as its author's.
+    UPDATE holidays h
+       SET data = jsonb_set(h.data, '{chat}', rewritten.chat)
+      FROM (
+        SELECT hh.id,
+               jsonb_agg(
+                 CASE
+                   WHEN u.new_id IS NOT NULL
+                   THEN message || jsonb_build_object('userId', u.new_id::text)
+                   ELSE message
+                 END
+                 ORDER BY ordinality
+               ) AS chat
+          FROM holidays hh
+          CROSS JOIN LATERAL jsonb_array_elements(
+                 COALESCE(hh.data -> 'chat', '[]'::jsonb)
+               ) WITH ORDINALITY AS element(message, ordinality)
+          LEFT JOIN users u ON u.id = element.message ->> 'userId'
+         GROUP BY hh.id
+      ) AS rewritten
+     WHERE h.id = rewritten.id;
+  END IF;
+
+  IF has_members THEN
+    ALTER TABLE holiday_members ADD COLUMN new_user_id UUID;
+
+    UPDATE holiday_members m
+       SET new_user_id = u.new_id
+      FROM users u
+     WHERE u.id = m.user_id;
+  END IF;
+
+  -- 4. Swap the columns. The child foreign keys have to go first, otherwise
+  --    users.id cannot be dropped.
+  IF has_holidays THEN
+    ALTER TABLE holidays DROP CONSTRAINT IF EXISTS holidays_owner_id_fkey;
+    ALTER TABLE holidays DROP COLUMN owner_id;
+    ALTER TABLE holidays RENAME COLUMN new_owner_id TO owner_id;
+    ALTER TABLE holidays ALTER COLUMN owner_id SET NOT NULL;
+  END IF;
+
+  IF has_members THEN
+    ALTER TABLE holiday_members DROP CONSTRAINT IF EXISTS holiday_members_user_id_fkey;
+    ALTER TABLE holiday_members DROP COLUMN user_id;
+    ALTER TABLE holiday_members RENAME COLUMN new_user_id TO user_id;
+  END IF;
+
+  -- Dropping the column takes the primary key constraint with it.
+  ALTER TABLE users DROP COLUMN id;
+  ALTER TABLE users RENAME COLUMN new_id TO id;
+  ALTER TABLE users ADD PRIMARY KEY (id);
+  ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+  -- 5. Restore referential integrity with the new types.
+  IF has_holidays THEN
+    ALTER TABLE holidays
+      ADD CONSTRAINT holidays_owner_id_fkey
+      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS holidays_owner_idx ON holidays (owner_id);
+  END IF;
+
+  IF has_members THEN
+    ALTER TABLE holiday_members
+      ADD CONSTRAINT holiday_members_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS holiday_members_user_idx ON holiday_members (user_id);
+  END IF;
+
+  RAISE NOTICE 'voyager: re-keyed user identifiers to UUID';
 END $$;
 
 DROP INDEX IF EXISTS users_email_lower_idx;
@@ -148,100 +276,6 @@ CREATE INDEX IF NOT EXISTS holiday_members_email_idx ON holiday_members (lower(e
 -- One membership per person per holiday.
 CREATE UNIQUE INDEX IF NOT EXISTS holiday_members_unique_email
   ON holiday_members (holiday_id, lower(email));
-
--- ------------------------------------------------------------------ --
--- Re-key user identifiers from prefixed text ("usr_kX3n…") to UUID.
---
--- This is not a type change: the old values are not parseable as UUIDs, so
--- every row gets a new identifier and all three references are remapped
--- together. Runs only on a database still carrying the text column, so a
--- fresh install skips it entirely.
---
--- The whole schema script executes as one implicit transaction, so a failure
--- anywhere below rolls the database back to the text schema untouched.
--- ------------------------------------------------------------------ --
-DO $$
-BEGIN
-  IF (
-    SELECT data_type FROM information_schema.columns
-     WHERE table_name = 'users' AND column_name = 'id'
-  ) = 'text' THEN
-
-    -- 1. Mint the replacement identifiers.
-    ALTER TABLE users ADD COLUMN new_id UUID NOT NULL DEFAULT gen_random_uuid();
-    ALTER TABLE holidays ADD COLUMN new_owner_id UUID;
-    ALTER TABLE holiday_members ADD COLUMN new_user_id UUID;
-
-    -- 2. Carry every reference across via the old text key.
-    UPDATE holidays h
-       SET new_owner_id = u.new_id
-      FROM users u
-     WHERE u.id = h.owner_id;
-
-    UPDATE holiday_members m
-       SET new_user_id = u.new_id
-      FROM users u
-     WHERE u.id = m.user_id;
-
-    -- 3. Chat messages embed the author's user id inside holidays.data, which
-    --    no foreign key covers. Left alone, every existing message would keep
-    --    a dangling text id and stop being recognised as its author's.
-    UPDATE holidays h
-       SET data = jsonb_set(h.data, '{chat}', rewritten.chat)
-      FROM (
-        SELECT hh.id,
-               jsonb_agg(
-                 CASE
-                   WHEN u.new_id IS NOT NULL
-                   THEN message || jsonb_build_object('userId', u.new_id::text)
-                   ELSE message
-                 END
-                 ORDER BY ordinality
-               ) AS chat
-          FROM holidays hh
-          CROSS JOIN LATERAL jsonb_array_elements(
-                 COALESCE(hh.data -> 'chat', '[]'::jsonb)
-               ) WITH ORDINALITY AS element(message, ordinality)
-          LEFT JOIN users u ON u.id = element.message ->> 'userId'
-         GROUP BY hh.id
-      ) AS rewritten
-     WHERE h.id = rewritten.id;
-
-    -- 4. Swap the columns. The child foreign keys have to go first, otherwise
-    --    users.id cannot be dropped.
-    ALTER TABLE holidays DROP CONSTRAINT IF EXISTS holidays_owner_id_fkey;
-    ALTER TABLE holiday_members DROP CONSTRAINT IF EXISTS holiday_members_user_id_fkey;
-
-    ALTER TABLE holidays DROP COLUMN owner_id;
-    ALTER TABLE holidays RENAME COLUMN new_owner_id TO owner_id;
-    ALTER TABLE holidays ALTER COLUMN owner_id SET NOT NULL;
-
-    ALTER TABLE holiday_members DROP COLUMN user_id;
-    ALTER TABLE holiday_members RENAME COLUMN new_user_id TO user_id;
-
-    -- Dropping the column takes the primary key constraint with it.
-    ALTER TABLE users DROP COLUMN id;
-    ALTER TABLE users RENAME COLUMN new_id TO id;
-    ALTER TABLE users ADD PRIMARY KEY (id);
-    ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid();
-
-    -- 5. Restore referential integrity with the new types.
-    ALTER TABLE holidays
-      ADD CONSTRAINT holidays_owner_id_fkey
-      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE;
-
-    ALTER TABLE holiday_members
-      ADD CONSTRAINT holiday_members_user_id_fkey
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
-
-    -- The indexes survived the rename, but rebuild them so they are on the
-    -- new column rather than a dropped one.
-    CREATE INDEX IF NOT EXISTS holidays_owner_idx ON holidays (owner_id);
-    CREATE INDEX IF NOT EXISTS holiday_members_user_idx ON holiday_members (user_id);
-
-    RAISE NOTICE 'voyager: re-keyed user identifiers to UUID';
-  END IF;
-END $$;
 `;
 
 /** Applied once per process, before the first query. */
