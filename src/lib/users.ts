@@ -25,25 +25,25 @@ export const BUILT_IN_USERS: BuiltInUser[] = [
   {
     id: '00000000-0000-4000-8000-000000000001',
     name: 'Aashish Opal',
-    email: 'aashish@voyager.local',
+    email: 'aashishopal@gmail.com',
     avatarColor: '#8b6f3f',
   },
   {
     id: '00000000-0000-4000-8000-000000000002',
     name: 'Neha Opal',
-    email: 'neha@voyager.local',
+    email: 'neha.opal29@gmail.com',
     avatarColor: '#6b3f8b',
   },
   {
     id: '00000000-0000-4000-8000-000000000003',
     name: 'Anshiv Opal',
-    email: 'anshiv@voyager.local',
+    email: 'anshivopal@gmail.com',
     avatarColor: '#3f6b8b',
   },
   {
     id: '00000000-0000-4000-8000-000000000004',
     name: 'Shivom Opal',
-    email: 'shivom@voyager.local',
+    email: 'shivomopal@gmail.com',
     avatarColor: '#3f8b6b',
   },
 ];

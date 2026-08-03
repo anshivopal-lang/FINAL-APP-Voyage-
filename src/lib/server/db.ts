@@ -297,13 +297,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS holiday_members_unique_email
 -- disturbs the rows that holidays and memberships point at.
 -- ------------------------------------------------------------------ --
 INSERT INTO users (id, email, name) VALUES
-  ('00000000-0000-4000-8000-000000000001', 'aashish@voyager.local', 'Aashish Opal'),
-  ('00000000-0000-4000-8000-000000000002', 'neha@voyager.local',    'Neha Opal'),
-  ('00000000-0000-4000-8000-000000000003', 'anshiv@voyager.local',  'Anshiv Opal'),
-  ('00000000-0000-4000-8000-000000000004', 'shivom@voyager.local',  'Shivom Opal')
+  ('00000000-0000-4000-8000-000000000001', 'aashishopal@gmail.com',  'Aashish Opal'),
+  ('00000000-0000-4000-8000-000000000002', 'neha.opal29@gmail.com',  'Neha Opal'),
+  ('00000000-0000-4000-8000-000000000003', 'anshivopal@gmail.com',   'Anshiv Opal'),
+  ('00000000-0000-4000-8000-000000000004', 'shivomopal@gmail.com',   'Shivom Opal')
 ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email,
       name  = EXCLUDED.name;
+
+-- Memberships carry the invited email alongside user_id. Authorisation joins on
+-- user_id, so a stale address cannot leak anything — but it would be shown in
+-- the members list, and holiday_members_unique_email is keyed on the email, so
+-- re-inviting the same person at their new address would create a second
+-- membership row for one user. Re-point the address on any row already bound to
+-- a built-in account.
+UPDATE holiday_members m
+   SET email = u.email
+  FROM users u
+ WHERE m.user_id = u.id
+   AND lower(m.email) IS DISTINCT FROM lower(u.email);
 `;
 
 /** Applied once per process, before the first query. */

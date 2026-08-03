@@ -10,15 +10,21 @@ dashboard with no sign-in, and acts as one of four built-in accounts:
 
 | Name | Email |
 | --- | --- |
-| Aashish Opal | `aashish@voyager.local` |
-| Neha Opal | `neha@voyager.local` |
-| Anshiv Opal | `anshiv@voyager.local` |
-| Shivom Opal | `shivom@voyager.local` |
+| Aashish Opal | `aashishopal@gmail.com` |
+| Neha Opal | `neha.opal29@gmail.com` |
+| Anshiv Opal | `anshivopal@gmail.com` |
+| Shivom Opal | `shivomopal@gmail.com` |
 
 They are defined in `src/lib/users.ts` with fixed UUIDs and seeded by the schema
 script, so a reseed or a fresh database keeps every holiday attached to the same
 person. Switch between them from the header — the change is instant and does not
 reload the page.
+
+The addresses are identifiers, not mailboxes: they are what you invite by, and
+what the members list shows. Nothing is ever sent to them — the app has no mail
+transport, and with no sign-in there is no password to deliver. Changing one in
+`src/lib/users.ts` also updates the seeded row and any existing membership bound
+to that account on the next boot.
 
 > **This app is open to anyone who can reach it.** The selected account lives in
 > a plain cookie the browser can write, so it is a convenience, not a security
@@ -108,7 +114,6 @@ The schema and the four accounts are created automatically on first request.
 
 ```
 src/
-  auth.ts                     Auth.js config — credentials provider, JWT sessions
   app/
     (app)/                    All pages; layout resolves the selected account
     api/holidays/…            REST API; every route calls requireUser()

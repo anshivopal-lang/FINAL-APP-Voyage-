@@ -160,10 +160,10 @@ for (const bad of ['not-a-uuid', '99999999-9999-4999-8999-999999999999', "'; DRO
 console.log('\n=== 8. Sharing still works between built-in accounts ===');
 r = await call('POST', `/api/holidays/${victim}/members`, {
   as: USERS.aashish,
-  body: { email: 'neha@voyager.local', role: 'traveller' },
+  body: { email: 'neha.opal29@gmail.com', role: 'traveller' },
 });
 ok('Aashish invites Neha', r.status === 201, r.body);
-const nehaMember = r.body.holiday?.members?.find((m) => m.email === 'neha@voyager.local');
+const nehaMember = r.body.holiday?.members?.find((m) => m.email === 'neha.opal29@gmail.com');
 ok('Neha is bound to her seeded account id', nehaMember?.userId === USERS.neha, nehaMember);
 
 r = await call('GET', '/api/holidays', { as: USERS.neha });
