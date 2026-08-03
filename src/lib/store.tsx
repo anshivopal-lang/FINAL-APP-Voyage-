@@ -21,8 +21,8 @@ import type {
   MemberRole,
   NotificationSettings,
   Permission,
-  SessionUser,
 } from './types';
+import { USER_COOKIE, type BuiltInUser } from './users';
 
 export interface Result {
   ok: boolean;
@@ -84,12 +84,6 @@ async function api<T>(
       credentials: 'same-origin',
     });
 
-    if (response.status === 401) {
-      // The session expired underneath us — bounce to a fresh sign-in.
-      window.location.href = '/signin';
-      return { ok: false, error: 'Your session expired.' };
-    }
-
     const body = response.status === 204 ? null : await response.json();
 
     if (!response.ok) {
@@ -114,7 +108,11 @@ interface StoreValue {
   holidays: Holiday[];
   currentUserId: string;
   currentUserName: string;
-  currentUser: SessionUser;
+  currentUser: BuiltInUser;
+  /** The four built-in accounts, for the header switcher. */
+  users: BuiltInUser[];
+  /** Switches account in place — no sign-in, no page reload. */
+  switchUser: (userId: string) => void;
 
   refresh: () => Promise<void>;
   getHoliday: (id: string) => Holiday | undefined;
@@ -187,13 +185,16 @@ const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({
   user,
+  users,
   children,
 }: {
-  user: SessionUser;
+  user: BuiltInUser;
+  users: BuiltInUser[];
   children: ReactNode;
 }) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [ready, setReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState<BuiltInUser>(user);
 
   /** Folds a holiday returned by the API back into local state. */
   const upsert = useCallback((holiday: Holiday) => {
@@ -215,6 +216,27 @@ export function StoreProvider({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  /**
+   * Selects a different account.
+   *
+   * The cookie is written first so the very next request already carries the
+   * new identity, then local state updates and the holiday list is refetched.
+   * Nothing navigates, so the page never reloads.
+   */
+  const switchUser = useCallback(
+    (userId: string) => {
+      const next = users.find((candidate) => candidate.id === userId);
+      if (!next || next.id === currentUser.id) return;
+
+      document.cookie = `${USER_COOKIE}=${next.id}; path=/; max-age=31536000; samesite=lax`;
+      setCurrentUser(next);
+      setReady(false);
+      setHolidays([]);
+      void refresh();
+    },
+    [users, currentUser.id, refresh],
+  );
 
   const value = useMemo<StoreValue>(() => {
     const find = (id: string) => holidays.find((holiday) => holiday.id === id);
@@ -238,9 +260,11 @@ export function StoreProvider({
     return {
       ready,
       holidays,
-      currentUserId: user.id,
-      currentUserName: user.name,
-      currentUser: user,
+      currentUserId: currentUser.id,
+      currentUserName: currentUser.name,
+      currentUser,
+      users,
+      switchUser,
 
       refresh,
       getHoliday: find,
@@ -249,12 +273,12 @@ export function StoreProvider({
       // re-checks everything and is the only thing that actually protects data.
       can(holidayId, permission) {
         const holiday = find(holidayId);
-        return holiday ? canDo(holiday, user.id, permission) : false;
+        return holiday ? canDo(holiday, currentUser.id, permission) : false;
       },
 
       isOwner(holidayId) {
         const holiday = find(holidayId);
-        return holiday ? isOwnerOf(holiday, user.id) : false;
+        return holiday ? isOwnerOf(holiday, currentUser.id) : false;
       },
 
       async createHoliday(input) {
@@ -436,7 +460,7 @@ export function StoreProvider({
       postMessage: (id, body) =>
         mutate(`/api/holidays/${id}/items/chat`, post('', { body })),
     };
-  }, [holidays, ready, refresh, upsert, user]);
+  }, [holidays, ready, refresh, upsert, currentUser, users, switchUser]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

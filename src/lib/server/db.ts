@@ -92,17 +92,17 @@ export async function transaction<T>(
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email         TEXT NOT NULL,
-  name          TEXT NOT NULL,
-  password_hash TEXT,
-  image         TEXT,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email      TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  image      TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Migration from the previous Google-only schema. Idempotent, so an existing
--- deployment picks it up on its next cold start and a fresh one skips it.
-ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+-- Authentication was removed, so there are no credentials to store. Dropped
+-- rather than left nullable: an unused password column invites something to
+-- start writing to it again.
+ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
 
 DO $$
 BEGIN
@@ -285,6 +285,25 @@ CREATE INDEX IF NOT EXISTS holiday_members_email_idx ON holiday_members (lower(e
 -- One membership per person per holiday.
 CREATE UNIQUE INDEX IF NOT EXISTS holiday_members_unique_email
   ON holiday_members (holiday_id, lower(email));
+
+-- ------------------------------------------------------------------ --
+-- The four built-in accounts.
+--
+-- Authentication was removed, so these are seeded rather than registered.
+-- Fixed ids (see src/lib/users.ts) mean a reseed or a fresh database keeps
+-- every holiday attached to the same person.
+--
+-- ON CONFLICT DO UPDATE only touches the display fields, so re-running never
+-- disturbs the rows that holidays and memberships point at.
+-- ------------------------------------------------------------------ --
+INSERT INTO users (id, email, name) VALUES
+  ('00000000-0000-4000-8000-000000000001', 'aashish@voyager.local', 'Aashish Opal'),
+  ('00000000-0000-4000-8000-000000000002', 'neha@voyager.local',    'Neha Opal'),
+  ('00000000-0000-4000-8000-000000000003', 'anshiv@voyager.local',  'Anshiv Opal'),
+  ('00000000-0000-4000-8000-000000000004', 'shivom@voyager.local',  'Shivom Opal')
+ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email,
+      name  = EXCLUDED.name;
 `;
 
 /** Applied once per process, before the first query. */

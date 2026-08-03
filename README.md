@@ -1,52 +1,60 @@
 # Voyager — Holiday Management System
 
-A private, multi-user platform for planning, sharing and archiving holidays.
-Next.js (App Router), TypeScript, Tailwind CSS v4, Auth.js v5 with email +
-password credentials, and Postgres.
+A platform for planning, sharing and archiving holidays. Next.js (App Router),
+TypeScript, Tailwind CSS v4 and Postgres.
 
-## Security model
+## No authentication
 
-Identity comes from one place only: the signed session cookie. There is no way
-to select, spoof or switch accounts from the UI.
+Authentication has been removed for now. The app opens straight onto the
+dashboard with no sign-in, and acts as one of four built-in accounts:
 
-- **Email + password via Auth.js v5 CredentialsProvider.** Sessions are
-  stateless JWTs in an httpOnly, SameSite=Lax cookie. No token is ever readable
-  from client JavaScript.
-- **Passwords are hashed with bcrypt** (cost 12 by default) and never logged,
-  returned by an API, or stored in plain text.
-- **Sign-in never reveals whether an email is registered.** A wrong password
-  and an unknown address produce the same message, and a dummy bcrypt
-  comparison runs when no account matches so the two take the same time.
-- **Credential endpoints are rate limited** — per IP and per target email on
-  sign-in, per IP on sign-up.
-- **Ownership keys on the account id**, never on an email or a membership id —
-  both of which can be re-pointed at a different person.
-- **Every API route re-checks the session server-side.** The client's own
-  permission checks decide only what to *render*; they are never trusted.
-- **Reads are scoped by a membership join**, so "list holidays" cannot return
-  someone else's row even if the filter were forgotten downstream.
-- **Unauthorised access returns 404, not 403**, so holiday ids cannot be probed
-  for existence.
-- **Confidential documents are filtered out server-side** — a member without
-  `documents.manage` never receives them in the payload at all.
-- **Chat authorship comes from the session**, never the request body.
-- **Owner-only permissions** (`holiday.archive`, `holiday.delete`) are stripped
-  from any member update rather than rejected, so a client posting the whole
-  permission grid cannot escalate by accident.
+| Name | Email |
+| --- | --- |
+| Aashish Opal | `aashish@voyager.local` |
+| Neha Opal | `neha@voyager.local` |
+| Anshiv Opal | `anshiv@voyager.local` |
+| Shivom Opal | `shivom@voyager.local` |
 
-Run the proofs:
+They are defined in `src/lib/users.ts` with fixed UUIDs and seeded by the schema
+script, so a reseed or a fresh database keeps every holiday attached to the same
+person. Switch between them from the header — the change is instant and does not
+reload the page.
+
+> **This app is open to anyone who can reach it.** The selected account lives in
+> a plain cookie the browser can write, so it is a convenience, not a security
+> boundary. If you deploy it anywhere public, turn on Vercel's Deployment
+> Protection (Settings → Deployment Protection → Vercel Authentication) so the
+> URL is not simply open to the internet.
+
+## Data separation
+
+Each account has completely separate holidays, itineraries, expenses, bookings,
+documents, chats and settings. Nothing is shared unless one account explicitly
+invites another to a trip.
+
+That separation is enforced server-side and survived the removal of auth
+unchanged — only the source of the user id changed, from a signed session to the
+cookie:
+
+- **Reads are scoped by a membership join**, so listing holidays cannot return
+  another account's row.
+- **Every API route resolves the account server-side** via `requireUser()`. The
+  client's own permission checks decide only what to *render*.
+- **An unknown or hand-edited cookie falls back to the default account** rather
+  than reaching the database as an arbitrary value.
+- **Reaching another account's holiday by id returns 404**, not 403.
+- **Confidential documents are filtered out server-side.**
+- **Chat authorship comes from the resolved account**, never the request body.
+
+Run the proof:
 
 ```bash
-node --env-file=.env.local tests/credentials-auth.mjs   # 32 checks
-node --env-file=.env.local tests/data-isolation.mjs     # 47 checks
+node --env-file=.env.local tests/user-separation.mjs   # 49 checks
 ```
 
-The isolation suite covers covering: unauthenticated access, forged and wrong-secret cookies,
-cross-account reads and writes across twelve endpoints, sharing, privilege
-escalation, confidential-document leakage, authorship spoofing, and immediate
-revocation on member removal.
-
 ## Roles
+
+Roles are per-holiday, not global. There is no admin or superuser.
 
 | Role | What it grants |
 | --- | --- |
@@ -56,9 +64,7 @@ revocation on member removal.
 | Viewer | Read-only. |
 
 Extra permissions can be granted individually on top of a role. Trips are
-private to their owner until someone is invited by email — if that person has
-no account yet the membership stays pending and is claimed automatically the
-first time they register with that address.
+private to their owner until another account is invited by email.
 
 ## Local setup
 
@@ -68,83 +74,18 @@ first time they register with that address.
    createdb voyager_dev
    ```
 
-2. **Environment.** Copy `.env.example` to `.env.local` and fill it in.
-   Generate the secret with `openssl rand -base64 32`.
+2. **Environment.** Copy `.env.example` to `.env.local` and set `DATABASE_URL`.
+   There is no auth secret to generate.
 
-4. **Run.**
+3. **Run.**
 
    ```bash
    npm install
    npm run dev
    ```
 
-The schema is created automatically on first request. `GET /api/health`
-reports whether the process can reach Postgres.
-
-## Database TLS
-
-Connections to a non-loopback database are fully verified — certificate chain
-**and** hostname, which is what `sslmode=verify-full` means. Encryption without
-verification (`sslmode=require`, or node-postgres' `rejectUnauthorized: false`)
-stops passive eavesdropping but not an attacker who can answer in the
-database's place, because nothing checks the certificate belongs to the host
-you asked for.
-
-**`sslmode` is stripped from the connection string before it reaches
-node-postgres.** Two reasons:
-
-- pg emits `SECURITY WARNING: The SSL modes 'prefer', 'require', and
-  'verify-ca' are treated as aliases for 'verify-full'…` whenever it parses one
-  of those three. Removing the parameter silences it at the source, so a stale
-  `DATABASE_URL` cannot bring it back.
-- More seriously, when `sslmode` is present node-postgres **discards the `ca`**
-  from an explicit `ssl` option. Any provider needing a custom root then fails
-  with `unable to verify the first certificate` even with `DATABASE_CA_CERT`
-  set correctly.
-
-Nothing is lost by removing it, because the `ssl` object the app supplies is
-stricter than any `sslmode` value. The policy lives in `src/lib/server/ssl.ts`
-and is mirrored in `scripts/` and `tests/`.
-
-| Host | Behaviour |
-| --- | --- |
-| `localhost` / `127.0.0.1` / `::1` | TLS off — no certificate to verify and traffic never leaves the machine |
-| anything else | `verify-full` against Node's trusted roots, or `DATABASE_CA_CERT` if set |
-
-Set `DATABASE_CA_CERT` only when your provider's certificate is not publicly
-trusted. It takes a file path or the PEM inline — use inline on Vercel, which
-has no filesystem to put a file on. As of writing: Neon and Vercel Postgres are
-publicly trusted and need nothing; Supabase may need `prod-ca-2021.crt` from the
-dashboard; AWS RDS needs its regional CA bundle. Check your provider's current
-docs rather than trusting this list.
-
-`DATABASE_SSL_NO_VERIFY=true` disables verification and logs a warning on every
-boot. It exists for providers that publish no usable CA — Heroku Postgres has
-historically been one. It is a real downgrade, not a formality.
-
-A misconfiguration is immediate and obvious rather than silent: `/api/health`
-returns `degraded` and the log names the TLS failure (`unable to verify the
-first certificate`, `Hostname/IP does not match…`).
-
-## Creating an account
-
-Normally you just sign up at `/signup` — the first account is not special.
-
-For an account created out-of-band (or to reset a forgotten password, which the
-app itself cannot yet do):
-
-```bash
-node --env-file=.env.local scripts/create-account.mjs you@example.com "Your Name"
-node --env-file=.env.local scripts/create-account.mjs you@example.com --reset
-```
-
-The password is generated at run time and printed once. It is never written to
-a file or committed. The script needs `DATABASE_URL`, so it grants nothing that
-direct SQL access would not — it is an operator convenience, not a back door.
-
-**There is no admin or superuser role.** `owner` is a per-holiday role earned by
-creating a holiday; it confers nothing outside that trip. No account can see or
-manage another user's data.
+The schema and the four accounts are created automatically on first request.
+`GET /api/health` reports whether the process can reach Postgres.
 
 ## Deploying to Vercel
 
@@ -155,18 +96,13 @@ manage another user's data.
 
    | Variable | Notes |
    | --- | --- |
-   | `BCRYPT_ROUNDS` | Optional. Defaults to 12 |
-   | `AUTH_SECRET` | `openssl rand -base64 32`. Changing it signs everyone out |
-   | `NEXTAUTH_SECRET` | Same value — set both so either convention works |
    | `DATABASE_URL` | Pooled Postgres connection string |
+   | `DATABASE_CA_CERT` | Only if the provider's certificate is not publicly trusted |
 
-   `NEXTAUTH_URL` is **not** required on Vercel: the deployment URL is detected
-   automatically and `trustHost` is enabled. Set it only for a custom domain.
+   There is no auth secret, no OAuth client and no redirect URI to keep in sync.
 
-No secret is exposed to the browser: nothing is prefixed with `NEXT_PUBLIC_`,
-and password hashing, session verification and every database query run
-server-side. There is no OAuth provider to configure and no third-party
-redirect URI to keep in sync.
+4. **Turn on Deployment Protection.** With no sign-in, the deployment is
+   otherwise open to anyone with the URL.
 
 ## Architecture
 
@@ -174,24 +110,21 @@ redirect URI to keep in sync.
 src/
   auth.ts                     Auth.js config — credentials provider, JWT sessions
   app/
-    (app)/                    Authenticated pages; layout redirects to /signin
-    signin/                   Public sign-in page
-    signup/                   Public registration page
-    api/auth/register/        Account creation (bcrypt hashing, validation)
+    (app)/                    All pages; layout resolves the selected account
     api/holidays/…            REST API; every route calls requireUser()
     api/health/               Liveness probe
   lib/
+    users.ts                  The four built-in accounts and the cookie name
     permissions.ts            Roles and grants — shared by client and server
     store.tsx                 Client store; talks to the API, holds no identity
     server/
       db.ts                   Postgres pool, schema migration
       repository.ts           Data access — every read scoped by user
-      guard.ts                requireUser, authoriseHoliday, error handling
-      rate-limit.ts           In-memory throttle for credential endpoints
+      guard.ts                requireUser (reads the cookie), authoriseHoliday
+      ssl.ts                  TLS policy for the database connection
       validation.ts           Zod schemas for every request body
 tests/
-  credentials-auth.mjs        Registration + sign-in + sign-out flow
-  data-isolation.mjs          Two-account isolation proof
+  user-separation.mjs         Four-account separation proof
 ```
 
 Data lives in Postgres in three tables: `users`, `holidays` (trip document as
@@ -205,19 +138,11 @@ Holiday and item ids remain prefixed text (`hol_`, `mem_`, `itin_`).
 
 ## Known gaps
 
-- **No password reset.** A user who forgets their password cannot recover the
-  account without a manual database update. Adding it needs an email sender,
-  which this app does not currently have.
-- **No email verification.** Addresses are trusted as typed, so a holiday
-  invitation could be claimed by someone who registers with an address they do
-  not own.
-- **The rate limiter is per-instance.** Serverless functions do not share
-  memory, so it is a speed bump rather than a guarantee. Move it to Vercel KV
-  or Upstash Redis for a real throttle.
-- **Accounts created under the old Google flow have no password** and cannot
-  sign in until one is set. The `google_id` column is kept, nullable, so that
-  mapping is not lost.
-
+- **No authentication at all.** Anyone who can reach the app can select any of
+  the four accounts. Use Vercel Deployment Protection if it is deployed
+  anywhere reachable.
+- **Only four accounts.** New ones cannot be created from the UI; add them to
+  `src/lib/users.ts` and the seed block in `src/lib/server/db.ts`.
 ## Upgrading a database that predates UUID user ids
 
 User ids used to be prefixed text (`usr_kX3n…`). Those values cannot be cast to
@@ -238,10 +163,8 @@ taking the whole schema script — and the app — down with it. If you see
 `/api/health` reporting `database: unreachable` with that message in the logs,
 you are on a build from before this was fixed.
 
-**Every existing session breaks**, because the id inside the JWT no longer
-matches any row. Signed-in users get a 401 and are sent back to sign in rather
-than seeing a silently empty account. To flush them deliberately, rotate
-`AUTH_SECRET` as part of the same deploy.
+This ran before authentication was removed. It is retained because a database
+created under the older schema still needs it on first boot.
 
 ## Note on `server/`
 

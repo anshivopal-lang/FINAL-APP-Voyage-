@@ -1,11 +1,12 @@
 import 'server-only';
 
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { PoolClient } from 'pg';
 
 import { getHolidayForUserTx } from './repository';
-import { auth } from '@/auth';
 import { can, isOwner } from '@/lib/permissions';
+import { resolveUser, USER_COOKIE } from '@/lib/users';
 import type { Holiday, Permission } from '@/lib/types';
 
 export class ApiError extends Error {
@@ -21,7 +22,7 @@ export class ApiError extends Error {
 
 export const badRequest = (message: string, details?: unknown) =>
   new ApiError(400, 'bad_request', message, details);
-export const unauthorised = (message = 'Sign in to continue.') =>
+export const unauthorised = (message = 'No user selected.') =>
   new ApiError(401, 'unauthorised', message);
 export const forbidden = (message = 'You do not have permission to do that.') =>
   new ApiError(403, 'forbidden', message);
@@ -38,38 +39,22 @@ export interface SessionUser {
 }
 
 /**
- * The only place a user id enters the system.
+ * The account the request is acting as.
  *
- * It comes from the signed session cookie — never from a header, query
- * parameter or request body, so it cannot be forged by editing a request.
+ * There is no authentication: this reads the selected account from a plain
+ * cookie and maps it onto one of the four built-in users. `resolveUser` falls
+ * back to the default for anything it does not recognise, so an absent,
+ * unknown or hand-edited cookie can only ever produce a valid built-in id —
+ * never an arbitrary string reaching the database.
+ *
+ * It is deliberately still the single place a user id enters the system, so
+ * every route keeps its existing per-user scoping unchanged.
  */
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export async function requireUser(): Promise<SessionUser> {
-  const session = await auth();
+  const store = await cookies();
+  const user = resolveUser(store.get(USER_COOKIE)?.value);
 
-  if (!session?.user?.id) {
-    throw unauthorised();
-  }
-
-  /**
-   * Sessions issued before user ids became UUIDs carry a "usr_…" value. That
-   * string reaches Postgres as a comparison against a uuid column and raises
-   * `invalid input syntax for type uuid` — a 500 on every request rather than
-   * a recoverable one. Rejecting it here turns a stale cookie into an ordinary
-   * expired session: the user is sent back to sign in.
-   */
-  if (!UUID_PATTERN.test(session.user.id)) {
-    throw unauthorised('Your session has expired. Please sign in again.');
-  }
-
-  return {
-    id: session.user.id,
-    email: session.user.email ?? '',
-    name: session.user.name ?? '',
-    image: session.user.image ?? null,
-  };
+  return { id: user.id, email: user.email, name: user.name, image: null };
 }
 
 interface AuthoriseOptions {

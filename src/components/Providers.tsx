@@ -4,18 +4,22 @@ import type { ReactNode } from 'react';
 
 import { ToastProvider } from './Toast';
 import { StoreProvider } from '@/lib/store';
-import type { SessionUser } from '@/lib/types';
+import type { BuiltInUser } from '@/lib/users';
 
 export function Providers({
   user,
+  users,
   children,
 }: {
-  user: SessionUser;
+  user: BuiltInUser;
+  users: BuiltInUser[];
   children: ReactNode;
 }) {
   return (
     <ToastProvider>
-      <StoreProvider user={user}>{children}</StoreProvider>
+      <StoreProvider user={user} users={users}>
+        {children}
+      </StoreProvider>
     </ToastProvider>
   );
 }

@@ -1,41 +1,27 @@
-import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 
-import { auth } from '@/auth';
 import { AppShell } from '@/components/AppShell';
 import { Providers } from '@/components/Providers';
+import { BUILT_IN_USERS, resolveUser, USER_COOKIE } from '@/lib/users';
 
-// Auth state is per-request, so nothing under here may be statically cached.
+// The selected account lives in a cookie, so nothing here may be cached.
 export const dynamic = 'force-dynamic';
 
 /**
- * The gate for every authenticated page.
+ * The app shell.
  *
- * This is a convenience redirect, not the security boundary — each API route
- * independently re-checks the session, so a page rendering without one still
- * cannot reach any data.
+ * There is no authentication and nothing to redirect to — the dashboard opens
+ * directly. The only thing read here is which of the four built-in accounts is
+ * selected, so the first paint already shows the right person.
  */
-export default async function AppLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    redirect('/signin');
-  }
-
-  const user = {
-    id: session.user.id,
-    name: session.user.name ?? 'Traveller',
-    email: session.user.email ?? '',
-    image: session.user.image ?? null,
-  };
+export default async function AppLayout({ children }: { children: ReactNode }) {
+  const store = await cookies();
+  const current = resolveUser(store.get(USER_COOKIE)?.value);
 
   return (
-    <Providers user={user}>
-      <AppShell user={user}>{children}</AppShell>
+    <Providers user={current} users={BUILT_IN_USERS}>
+      <AppShell>{children}</AppShell>
     </Providers>
   );
 }

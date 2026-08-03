@@ -97,8 +97,8 @@ export default function DashboardPage() {
             {store.currentUserName.split(' ')[0]}’s holidays
           </h1>
           <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-400">
-            Every trip you own or have been invited to. Create as many as you
-            like — nothing here is ever shared outside your members.
+            Every trip you own or have been invited to. Switch accounts from
+            the header — each one keeps its own holidays.
           </p>
         </div>
 
