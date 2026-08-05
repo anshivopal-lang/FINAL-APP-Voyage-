@@ -35,8 +35,10 @@ export interface Member {
   /** Membership id — unique to this person *on this holiday*. */
   id: string;
   /**
-   * The account this membership belongs to, or null while an invitation is
-   * still waiting for that person to sign in for the first time.
+   * The account this membership belongs to, or null when the invited address
+   * is not one of the four built-in accounts. With no sign-in there is nothing
+   * to claim such an invitation, so it stays unbound — it names someone on the
+   * trip without granting anybody access.
    *
    * Ownership and every permission check key on this, never on `id` or
    * `email`, both of which can be re-pointed at a different person.
@@ -50,7 +52,7 @@ export interface Member {
   permissions: Permission[];
   joinedAt: string;
   avatarColor: string;
-  /** True until the invited person has signed in and claimed the invitation. */
+  /** True when no built-in account backs this membership — see `userId`. */
   pending?: boolean;
   /** Per-member, never shared: each person chooses their own. */
   notifications?: NotificationSettings;

@@ -89,7 +89,7 @@ export const POST = route(async (request: Request, context: Context) => {
         if (!member) throw notFound('That member is not on this holiday.');
         if (!member.userId) {
           throw conflict(
-            'That person has not signed in yet, so they cannot own the holiday.',
+            'That person is not one of the built-in accounts, so they cannot own the holiday.',
           );
         }
 

@@ -188,13 +188,6 @@ export const CompassIcon = (props: IconProps) => (
   </Base>
 );
 
-export const LogOutIcon = (props: IconProps) => (
-  <Base {...props}>
-    <path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3" />
-    <path d="M16 16l4-4-4-4M20 12H9" />
-  </Base>
-);
-
 export const ClockIcon = (props: IconProps) => (
   <Base {...props}>
     <circle cx="12" cy="12" r="9" />
